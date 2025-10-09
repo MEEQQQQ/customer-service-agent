@@ -222,12 +222,11 @@ export default function ChatContainer() {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' })
         const audioUrl = URL.createObjectURL(audioBlob)
         
-        // Store the recorded audio and auto-send
-        setRecordedAudio(audioBlob as File)
-        
         // Auto-send the audio message
         setTimeout(() => {
           handleSendMessage('Audio message describing the issue', 'audio', audioBlob as File)
+          // Clear the recorded audio after sending to prevent it from being sent again
+          setRecordedAudio(null)
         }, 100)
         
         stream.getTracks().forEach(track => track.stop())

@@ -17,7 +17,7 @@ def lambda_handler(event, context):
         session_id = body['session_id']
         
         # Get transcript and image analysis (if they exist)
-        transcript_data = {'text': 'No audio provided'}
+        transcript_data = {'text': 'refer to the context provided'}
         analysis_data = {'labels': [], 'extracted_text': [], 'custom_labels': []}
         
         try:
@@ -53,7 +53,7 @@ def lambda_handler(event, context):
             max_tokens = 512 if query_complexity == 'simple' else 1024
             native_request = {
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "system", "content": "You are a helpful assistant that is able to solve Unifi TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills."},
                     {"role": "user", "content": prompt}
                 ],
                 "max_completion_tokens": max_tokens,
