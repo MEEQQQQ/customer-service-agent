@@ -9,9 +9,23 @@ bedrock_agent = boto3.client('bedrock-agent-runtime')
 polly_client = boto3.client('polly')
 s3_client = boto3.client('s3')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
-KNOWLEDGE_BASE_ID = "HU9V8VBZBI"
+KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'VARVMASHNX')
 
 def lambda_handler(event, context):
+    # Handle CORS preflight requests
+    if event['httpMethod'] == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Max-Age': '86400',
+                'Access-Control-Allow-Credentials': 'false'
+            },
+            'body': ''
+        }
+    
     try:
         body = json.loads(event['body'])
         session_id = body['session_id']
@@ -80,53 +94,89 @@ def lambda_handler(event, context):
             print(f"Bedrock Llama call failed: {e}")
             agent_response = generate_fallback_response(transcript_data['text'], analysis_data)
         
-        # Generate TTS audio
+        # Generate TTS audio with better error handling
         try:
+            # Ensure text is not empty and within limits
+            tts_text = agent_response.strip()
+            if not tts_text:
+                tts_text = "I understand your concern. Let me help you with your Unifi TV issue."
+            
+            # Truncate if too long (Polly limit is ~3000 chars)
+            if len(tts_text) > 2500:
+                tts_text = tts_text[:2500] + "..."
+                print(f"WARNING: Text truncated to {len(tts_text)} characters")
+            
+            print(f"Generating TTS for text: {tts_text[:100]}...")
             tts_response = polly_client.synthesize_speech(
-                Text=agent_response,
+                Text=tts_text,
                 OutputFormat='mp3',
-                VoiceId='Joanna'
+                VoiceId='Joanna',
+                Engine='standard'
             )
+            print("TTS generation successful")
+            
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
+            print(f"TTS ClientError: {error_code} - {str(e)}")
             if error_code == 'TextLengthExceededException':
-                truncated_text = agent_response[:2500]
-                print(f"WARNING: Text length exceeded, retrying with truncated text ({len(truncated_text)} chars)")
+                tts_text = agent_response[:1500] + "..."
+                print(f"Retrying with shorter text: {len(tts_text)} chars")
                 tts_response = polly_client.synthesize_speech(
-                    Text=truncated_text,
+                    Text=tts_text,
                     OutputFormat='mp3',
-                    VoiceId='Joanna'
+                    VoiceId='Joanna',
+                    Engine='standard'
                 )
             else:
                 raise
+        except Exception as e:
+            print(f"TTS generation failed: {str(e)}")
+            # Generate fallback audio
+            fallback_text = "I understand your concern. Let me help you with your Unifi TV issue."
+            tts_response = polly_client.synthesize_speech(
+                Text=fallback_text,
+                OutputFormat='mp3',
+                VoiceId='Joanna',
+                Engine='standard'
+            )
         
         # Format response for better readability
         formatted_response = format_markdown_response(agent_response)
         
         # Store audio response with proper headers
         audio_key = f"sessions/{session_id}/response.mp3"
-        s3_client.put_object(
-            Bucket=BUCKET_NAME,
-            Key=audio_key,
-            Body=tts_response['AudioStream'].read(),
-            ContentType='audio/mpeg',
-            CacheControl='max-age=3600',
-            Metadata={
-                'Content-Type': 'audio/mpeg'
-            }
-        )
+        try:
+            audio_data = tts_response['AudioStream'].read()
+            print(f"Audio data size: {len(audio_data)} bytes")
+            
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=audio_key,
+                Body=audio_data,
+                ContentType='audio/mpeg',
+                CacheControl='max-age=3600',
+                Metadata={
+                    'Content-Type': 'audio/mpeg',
+                    'session-id': session_id
+                }
+            )
+            print(f"Audio file uploaded successfully to {audio_key}")
+            
+        except Exception as e:
+            print(f"Failed to upload audio file: {str(e)}")
+            raise
         
-        # Use environment variable for API URL (will be set after deployment)
-        api_base_url = os.environ.get('API_BASE_URL')
-        if api_base_url:
-            audio_url = f"{api_base_url}/audio/{session_id}"
-        else:
-            # Fallback to presigned URL if API URL not available
+        # Always use presigned URL for audio playback
+        try:
             audio_url = s3_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': BUCKET_NAME, 'Key': audio_key},
                 ExpiresIn=3600
             )
+            print(f"Generated presigned URL: {audio_url[:100]}...")
+        except Exception as e:
+            print(f"Failed to generate presigned URL: {str(e)}")
+            audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
         
         # Store troubleshooting response
         troubleshooting_data = {
@@ -148,6 +198,7 @@ def lambda_handler(event, context):
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Credentials': 'false',
                 'Content-Type': 'application/json'
             },
             'body': json.dumps({
@@ -165,6 +216,7 @@ def lambda_handler(event, context):
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Credentials': 'false',
                 'Content-Type': 'application/json'
             },
             'body': json.dumps({

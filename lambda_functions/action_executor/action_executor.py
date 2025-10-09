@@ -7,6 +7,19 @@ s3_client = boto3.client('s3')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
 
 def lambda_handler(event, context):
+    # Handle CORS preflight requests
+    if event['httpMethod'] == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Max-Age': '86400'
+            },
+            'body': ''
+        }
+    
     try:
         body = json.loads(event['body'])
         session_id = body['session_id']

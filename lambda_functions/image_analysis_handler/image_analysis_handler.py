@@ -3,6 +3,7 @@ import boto3
 import os
 import re
 import logging
+from botocore.exceptions import ClientError
 
 # Configure logging
 logger = logging.getLogger()
@@ -21,6 +22,19 @@ def sanitize_session_id(session_id):
     return session_id
 
 def lambda_handler(event, context):
+    # Handle CORS preflight requests
+    if event['httpMethod'] == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Max-Age': '86400'
+            },
+            'body': ''
+        }
+    
     try:
         logger.info("Processing image analysis request")
         body = json.loads(event['body'])
@@ -30,6 +44,40 @@ def lambda_handler(event, context):
             
         session_id = sanitize_session_id(body['session_id'])
         image_key = f"sessions/{session_id}/image.jpg"
+        
+        # Check if image exists
+        try:
+            s3_client.head_object(Bucket=BUCKET_NAME, Key=image_key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                # No image file, return empty analysis
+                default_analysis = {
+                    'labels': [],
+                    'extracted_text': [],
+                    'custom_labels': [],
+                    'text_detections': []
+                }
+                s3_client.put_object(
+                    Bucket=BUCKET_NAME,
+                    Key=f"sessions/{session_id}/image_analysis.json",
+                    Body=json.dumps(default_analysis),
+                    ContentType='application/json'
+                )
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                        'Content-Type': 'application/json'
+                    },
+                    'body': json.dumps({
+                        'analysis': default_analysis,
+                        'session_id': session_id
+                    })
+                }
+            else:
+                raise e
         
         analysis_results = {}
         
