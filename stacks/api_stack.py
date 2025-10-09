@@ -131,8 +131,8 @@ class ApiStack(Stack):
         # Common CORS configuration
         cors_config = {
             "allow_origins": apigateway.Cors.ALL_ORIGINS,
-            "allow_methods": apigateway.Cors.ALL_METHODS,
-            "allow_headers": ["Content-Type", "Authorization"]
+            "allow_methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Amz-Security-Token"]
         }
 
         # Routes with input validation

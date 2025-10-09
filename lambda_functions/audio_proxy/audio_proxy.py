@@ -20,6 +20,8 @@ def lambda_handler(event, context):
             'headers': {
                 'Content-Type': 'audio/mpeg',
                 'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Cache-Control': 'max-age=3600'
             },
             'body': base64.b64encode(audio_data).decode('utf-8'),
@@ -30,7 +32,12 @@ def lambda_handler(event, context):
         if e.response['Error']['Code'] == 'NoSuchKey':
             return {
                 'statusCode': 404,
-                'headers': {'Access-Control-Allow-Origin': '*'},
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                    'Content-Type': 'application/json'
+                },
                 'body': json.dumps({'error': 'Audio file not found'})
             }
         raise
@@ -38,6 +45,11 @@ def lambda_handler(event, context):
     except Exception as e:
         return {
             'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Content-Type': 'application/json'
+            },
             'body': json.dumps({'error': str(e)})
         }
