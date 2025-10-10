@@ -72,6 +72,7 @@ def lambda_handler(event, context):
         
         # Load conversation history
         conversation_history = load_conversation_history(session_id)
+        is_first_message = len(conversation_history) == 0
         
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
@@ -79,7 +80,7 @@ def lambda_handler(event, context):
         
         # Call Bedrock with adaptive prompt
         try:
-            prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id)
+            prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id, is_first_message)
             
             # Build messages with conversation history
             messages = []
@@ -288,9 +289,12 @@ def save_conversation_history(session_id, user_message, assistant_message):
     
     # Add system message only on first interaction
     if not history:
-        history.append({"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."})
+        history.append({"role": "system", "content": "You are a helpful TV customer service agent. Respond naturally to each question. If the topic changes, follow the new topic. Be conversational and concise. Don't repeat ticket numbers in follow-ups."})
     
-    history.append({"role": "user", "content": user_message})
+    # Extract just the user query without all the context
+    clean_user_message = user_message.split('Customer Query:')[1].split('\n')[0].strip() if 'Customer Query:' in user_message else user_message
+    
+    history.append({"role": "user", "content": clean_user_message})
     history.append({"role": "assistant", "content": assistant_message})
     
     # Keep only last 10 exchanges (20 messages) + system message
@@ -413,38 +417,57 @@ def get_knowledge_base_context(query, analysis_data):
 
 
 
-def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_id):
+def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_id, is_first_message=False):
     """Build prompt based on complexity and available context"""
     # Extract TV error detection results
     tv_errors = [l['Name'] for l in analysis_data.get('tv_error_detection', [])]
+    has_visual_context = tv_errors or analysis_data.get('labels') or analysis_data.get('extracted_text')
     
-    base_prompt = f"""You are a TV customer service agent.
+    # Build context-aware prompt
+    if is_first_message:
+        base_prompt = f"""Customer Query: {query}
 
-Ticket Reference: {ticket_id}
+Ticket: {ticket_id}
 
-Customer Issue: {query}
+Context:
+- TV Errors: {tv_errors if tv_errors else 'None'}
+- Visual Info: {[l['Name'] for l in analysis_data.get('labels', [])]}
+- Screen Text: {analysis_data.get('extracted_text', [])}
 
-Image Analysis:
-- Detected TV Errors: {tv_errors if tv_errors else 'None'}
-- Labels: {[l['Name'] for l in analysis_data.get('labels', [])]}
-- Text: {analysis_data.get('extracted_text', [])}
-- Custom: {[l['Name'] for l in analysis_data.get('custom_labels', [])]}
+Instructions:
+1. Greet naturally and mention ticket number once (e.g., "I've created ticket {ticket_id} to help you")
+2. Address the specific issue mentioned
+3. Be conversational and helpful"""
+    else:
+        # Follow-up message - focus on current query only
+        if has_visual_context:
+            base_prompt = f"""Customer Query: {query}
 
-Instructions: 
-1. Naturally mention the ticket number in your greeting (e.g., "I've created ticket {ticket_id} for your issue" or "I'm here to help with your request, reference number {ticket_id}")
-2. If TV errors are detected, use them to identify the issue and provide specific troubleshooting steps.
-3. Keep the tone conversational and helpful.
-If the user's query is ambiguous and no TV errors detected, prompt user for asking again.
-Utilize Knowledge Base context only if user's issue is clear.
-"""
+New Context:
+- TV Errors: {tv_errors if tv_errors else 'None'}
+- Visual Info: {[l['Name'] for l in analysis_data.get('labels', [])]}
+- Screen Text: {analysis_data.get('extracted_text', [])}
+
+Instructions:
+1. Respond naturally to the current question
+2. If it's a new topic, address it directly without referring back to previous issues
+3. Be conversational like a human agent"""
+        else:
+            # Pure text follow-up
+            base_prompt = f"""Customer Query: {query}
+
+Instructions:
+1. Respond naturally to the current question
+2. If topic changed, follow the new topic
+3. Be conversational and helpful"""
     
     if kb_context:
-        base_prompt += f"\n\nKnowledge Base Context:\n{kb_context}"
+        base_prompt += f"\n\nKnowledge: {kb_context}"
     
     if complexity == 'simple':
-        base_prompt += "\n\nProvide a concise, direct solution with 2-3 key steps."
+        base_prompt += "\n\nKeep response concise (2-3 sentences)."
     else:
-        base_prompt += "\n\nProvide detailed troubleshooting with explanations, multiple options, and preventive measures."
+        base_prompt += "\n\nProvide detailed help with clear steps."
     
     return base_prompt
 

@@ -86,16 +86,13 @@ export default function ChatContainer() {
     try {
       let stepCount = 1
       const totalSteps = (hasAudio ? 1 : 0) + (hasImage ? 1 : 0) + 1
-      let transcribeSuccess = true
-      let imageAnalysisSuccess = true
 
       // Step 1: Transcribe audio if present
       if (hasAudio) {
         setProcessingStep(`Step ${stepCount}/${totalSteps}: Transcribing audio...`)
         const transcribeResult = await ApiClient.transcribeAudio(sessionId)
         if (transcribeResult.error) {
-          console.warn(`Transcription failed: ${transcribeResult.error}`)
-          transcribeSuccess = false
+          throw new Error(`Transcription failed: ${transcribeResult.error}`)
         }
         stepCount++
       }
@@ -105,16 +102,14 @@ export default function ChatContainer() {
         setProcessingStep(`Step ${stepCount}/${totalSteps}: Analyzing image...`)
         const imageResult = await ApiClient.analyzeImage(sessionId)
         if (imageResult.error) {
-          console.warn(`Image analysis failed: ${imageResult.error}`)
-          imageAnalysisSuccess = false
+          throw new Error(`Image analysis failed: ${imageResult.error}`)
         }
         stepCount++
       }
 
-      // Step 3: Get troubleshooting response (only if we have successful processing or no files)
-      if ((!hasAudio || transcribeSuccess) && (!hasImage || imageAnalysisSuccess)) {
-        setProcessingStep(`Step ${stepCount}/${totalSteps}: Generating solution...`)
-        const troubleshootResult = await ApiClient.troubleshoot(sessionId, textContent)
+      // Step 3: Get troubleshooting response
+      setProcessingStep(`Step ${stepCount}/${totalSteps}: Generating solution...`)
+      const troubleshootResult = await ApiClient.troubleshoot(sessionId, textContent)
         
         if (troubleshootResult.error) {
           throw new Error(`Troubleshooting failed: ${troubleshootResult.error}`)
@@ -172,25 +167,30 @@ export default function ChatContainer() {
 
     try {
       let sessionId: string
+      let needsUpload = type === 'image' || type === 'audio'
       
-      // Reuse existing session or create new one
-      if (currentSessionId) {
+      // If we have existing session and it's text-only, reuse session
+      if (currentSessionId && !needsUpload) {
         sessionId = currentSessionId
         setProcessingStep('Processing message...')
       } else {
-        setProcessingStep(type === 'text' ? 'Creating session...' : 'Uploading files...')
+        // Upload files (creates new session or uploads to existing)
+        setProcessingStep(needsUpload ? 'Uploading files...' : 'Creating session...')
         const uploadResult = await ApiClient.uploadFiles(
           type === 'image' ? file : undefined,
           type === 'audio' ? file as Blob : undefined,
-          type === 'text' ? content : undefined
+          type === 'text' ? content : undefined,
+          currentSessionId || undefined
         )
 
         if (uploadResult.error) {
-          throw new Error(`${type === 'text' ? 'Session creation' : 'Upload'} failed: ${uploadResult.error}`)
+          throw new Error(`Upload failed: ${uploadResult.error}`)
         }
 
         sessionId = uploadResult.data!.session_id
-        setCurrentSessionId(sessionId)
+        if (!currentSessionId) {
+          setCurrentSessionId(sessionId)
+        }
       }
 
       // Process with backend pipeline

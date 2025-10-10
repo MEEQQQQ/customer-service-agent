@@ -40,7 +40,7 @@ export class ApiClient {
     }
   }
 
-  static async uploadFiles(imageFile?: File, audioBlob?: Blob, textContent?: string): Promise<ApiResponse<UploadResponse>> {
+  static async uploadFiles(imageFile?: File, audioBlob?: Blob, textContent?: string, sessionId?: string): Promise<ApiResponse<UploadResponse>> {
     const body: any = {}
     if (imageFile) {
       const imageBase64 = await this.fileToBase64(imageFile)
@@ -52,6 +52,9 @@ export class ApiClient {
     }
     if (textContent) {
       body.text = textContent
+    }
+    if (sessionId) {
+      body.session_id = sessionId
     }
     return this.makeRequest<UploadResponse>('/upload', { method: 'POST', body: JSON.stringify(body) })
   }
