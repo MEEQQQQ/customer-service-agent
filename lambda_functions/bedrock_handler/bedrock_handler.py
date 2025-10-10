@@ -3,13 +3,17 @@ import boto3
 import os
 from botocore.exceptions import ClientError
 import re
+import uuid
+from datetime import datetime
 
 bedrock_runtime = boto3.client('bedrock-runtime')
 bedrock_agent = boto3.client('bedrock-agent-runtime')
 polly_client = boto3.client('polly')
 s3_client = boto3.client('s3')
+dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
 KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'VARVMASHNX')
+TICKET_TABLE_NAME = os.environ.get('TICKET_TABLE_NAME', 'ticket_log')
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
@@ -55,6 +59,10 @@ def lambda_handler(event, context):
             if e.response['Error']['Code'] != 'NoSuchKey':
                 raise
             print(f"No image analysis found for session {session_id}")
+        
+        # Generate and store ticket before troubleshooting
+        ticket_id = generate_ticket(session_id, transcript_data['text'], analysis_data)
+        print(f"Generated ticket: {ticket_id}")
         
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
@@ -202,6 +210,7 @@ def lambda_handler(event, context):
                 'Content-Type': 'application/json'
             },
             'body': json.dumps({
+                'ticket_id': ticket_id,
                 'response': formatted_response,
                 'audio_url': audio_url,
                 'actions': troubleshooting_data['recommended_actions'],
@@ -223,6 +232,32 @@ def lambda_handler(event, context):
                 'error': str(e)
             })
         }
+
+def generate_ticket(session_id, issue_text, analysis_data):
+    """Generate ticket and insert into DynamoDB"""
+    ticket_id = str(uuid.uuid4())[:8].upper()
+    timestamp = datetime.utcnow().isoformat()
+    
+    # Extract issue summary from text and analysis
+    labels = [l['Name'] for l in analysis_data.get('labels', [])]
+    extracted_text = analysis_data.get('extracted_text', [])
+    issue_summary = f"{issue_text[:100]}..." if len(issue_text) > 100 else issue_text
+    
+    table = dynamodb.Table(TICKET_TABLE_NAME)
+    table.put_item(
+        Item={
+            'ticket_id': ticket_id,
+            'session_id': session_id,
+            'issue': issue_summary,
+            'full_issue': issue_text,
+            'detected_labels': labels,
+            'extracted_text': extracted_text,
+            'timestamp': timestamp,
+            'status': 'OPEN'
+        }
+    )
+    
+    return ticket_id
 
 def generate_fallback_response(transcript, analysis):
     """Generate a basic troubleshooting response when Bedrock agent is not available"""
