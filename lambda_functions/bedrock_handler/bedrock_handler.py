@@ -70,12 +70,12 @@ def lambda_handler(event, context):
         
         # Call Bedrock with adaptive prompt
         try:
-            prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context)
+            prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id)
 
             max_tokens = 512 if query_complexity == 'simple' else 1024
             native_request = {
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills."},
+                    {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."},
                     {"role": "user", "content": prompt}
                 ],
                 "max_completion_tokens": max_tokens,
@@ -235,7 +235,7 @@ def lambda_handler(event, context):
 
 def generate_ticket(session_id, issue_text, analysis_data):
     """Generate ticket and insert into DynamoDB"""
-    ticket_id = str(uuid.uuid4())[:8].upper()
+    ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
     timestamp = datetime.utcnow().isoformat()
     
     # Extract issue summary from text and analysis
@@ -317,9 +317,11 @@ def get_knowledge_base_context(query, analysis_data):
 
 
 
-def build_adaptive_prompt(query, analysis_data, complexity, kb_context):
+def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_id):
     """Build prompt based on complexity and available context"""
     base_prompt = f"""You are a TV customer service agent.
+
+IMPORTANT: Start your response by informing the customer that their ticket {ticket_id} has been created.
 
 Customer Issue: {query}
 
@@ -329,8 +331,10 @@ Image Analysis:
 - Custom: {[l['Name'] for l in analysis_data.get('custom_labels', [])]}
 
 Instructions: 
+1. First, acknowledge the ticket creation: "Your ticket {ticket_id} has been created."
+2. Then provide the troubleshooting solution.
 If the user's query is ambiguous, prompt user for asking again.
-Utilize Knowledge Base context only if user's issue is clear..
+Utilize Knowledge Base context only if user's issue is clear.
 """
     
     if kb_context:
