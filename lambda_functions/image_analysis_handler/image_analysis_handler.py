@@ -85,6 +85,7 @@ def lambda_handler(event, context):
         # TV Error Detection using specific model
         tv_error_arn = "arn:aws:rekognition:us-east-1:190403256083:project/tv-error-detection/version/v1/1760113338518"
         try:
+            logger.info(f"Calling TV error detection model: {tv_error_arn}")
             tv_error_response = rekognition_client.detect_custom_labels(
                 ProjectVersionArn=tv_error_arn,
                 Image={
@@ -93,10 +94,14 @@ def lambda_handler(event, context):
                         'Name': image_key
                     }
                 },
-                MinConfidence=50
+                MinConfidence=30  # Lowered from 50 to 30
             )
             analysis_results['tv_error_detection'] = tv_error_response.get('CustomLabels', [])
             logger.info(f"TV error detection completed for session: {session_id}, found {len(analysis_results['tv_error_detection'])} labels")
+            if analysis_results['tv_error_detection']:
+                logger.info(f"Detected labels: {[label['Name'] for label in analysis_results['tv_error_detection']]}")
+            else:
+                logger.warning(f"No TV errors detected in image (confidence threshold: 30)")
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'ResourceNotReadyException':
@@ -107,7 +112,7 @@ def lambda_handler(event, context):
                 logger.error(f"TV error detection failed with {error_code}: {e}")
             analysis_results['tv_error_detection'] = []
         except Exception as e:
-            logger.error(f"TV error detection failed: {e}")
+            logger.error(f"TV error detection failed: {e}", exc_info=True)
             analysis_results['tv_error_detection'] = []
         
         # Try custom labels (if project is trained)
