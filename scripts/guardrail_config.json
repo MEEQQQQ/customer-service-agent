@@ -1,0 +1,7 @@
+{
+  "guardrail_id": "5dlelmx343n1",
+  "guardrail_version": "1",
+  "guardrail_arn": "arn:aws:bedrock:us-east-1:190403256083:guardrail/5dlelmx343n1",
+  "status": "READY",
+  "created_at": "2025-10-10T19:47:43+00:00"
+}

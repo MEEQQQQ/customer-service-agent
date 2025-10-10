@@ -8,6 +8,7 @@ from aws_cdk import (
     CfnOutput
 )
 from constructs import Construct
+import os
 
 class ApiStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
@@ -83,7 +84,9 @@ class ApiStack(Stack):
             timeout=Duration.seconds(60),
             environment={
                 **common_env,
-                "TICKET_TABLE_NAME": ticket_table.table_name
+                "TICKET_TABLE_NAME": ticket_table.table_name,
+                "GUARDRAIL_ID": os.environ.get('GUARDRAIL_ID', ''),
+                "GUARDRAIL_VERSION": os.environ.get('GUARDRAIL_VERSION', 'DRAFT')
             },
             layers=layers
         )
