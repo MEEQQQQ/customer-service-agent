@@ -101,6 +101,35 @@ class ApiStack(Stack):
             environment=common_env,
             layers=layers
         )
+        
+        # Feedback handler Lambda
+        feedback_handler = _lambda.Function(
+            self, "FeedbackHandler",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="feedback_handler.lambda_handler",
+            code=_lambda.Code.from_asset("lambda_functions/feedback_handler"),
+            timeout=Duration.seconds(30),
+            environment={
+                **common_env,
+                'FEEDBACK_TABLE': 'performance-thumbsup'
+            },
+            layers=layers
+        )
+        
+        # Session recap handler Lambda
+        session_recap_handler = _lambda.Function(
+            self, "SessionRecapHandler",
+            runtime=_lambda.Runtime.PYTHON_3_11,
+            handler="session_recap_handler.lambda_handler",
+            code=_lambda.Code.from_asset("lambda_functions/session_recap_handler"),
+            timeout=Duration.seconds(30),
+            environment={
+                **common_env,
+                'FEEDBACK_TABLE': 'performance-thumbsup',
+                'FUNCTION_NAME': 'CustomerServiceApi-BedrockHandler'
+            },
+            layers=layers
+        )
 
         # Grant S3 permissions to all Lambdas
         for func in [
@@ -109,7 +138,8 @@ class ApiStack(Stack):
             image_analysis_handler,
             bedrock_handler,
             action_executor,
-            audio_proxy
+            audio_proxy,
+            session_recap_handler
         ]:
             storage_bucket.grant_read_write(func)
 
@@ -127,6 +157,8 @@ class ApiStack(Stack):
         bedrock_integration = apigateway.LambdaIntegration(bedrock_handler)
         action_integration = apigateway.LambdaIntegration(action_executor)
         audio_integration = apigateway.LambdaIntegration(audio_proxy)
+        feedback_integration = apigateway.LambdaIntegration(feedback_handler)
+        recap_integration = apigateway.LambdaIntegration(session_recap_handler)
 
         # Common CORS configuration
         cors_config = {
@@ -207,6 +239,17 @@ class ApiStack(Stack):
         session_resource = audio_resource.add_resource("{session_id}")
         session_resource.add_method("GET", audio_integration)
         session_resource.add_cors_preflight(**cors_config)
+        
+        # Feedback endpoint
+        feedback_resource = api.root.add_resource("feedback")
+        feedback_resource.add_method("POST", feedback_integration)
+        feedback_resource.add_cors_preflight(**cors_config)
+        
+        # Session recap endpoint
+        recap_resource = api.root.add_resource("session-recap")
+        recap_session_resource = recap_resource.add_resource("{session_id}")
+        recap_session_resource.add_method("GET", recap_integration)
+        recap_session_resource.add_cors_preflight(**cors_config)
 
         self.api_url = api.url
 
