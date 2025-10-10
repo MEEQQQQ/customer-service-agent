@@ -33,6 +33,19 @@ response = bedrock.update_guardrail(
             {'type': 'DRIVER_ID', 'action': 'ANONYMIZE'}
         ]
     },
+    wordPolicyConfig={
+        'wordsConfig': [
+            {'text': 'fuck'},
+            {'text': 'shit'},
+            {'text': 'bitch'},
+            {'text': 'asshole'},
+            {'text': 'damn'},
+            {'text': 'bastard'}
+        ],
+        'managedWordListsConfig': [
+            {'type': 'PROFANITY'}
+        ]
+    },
     blockedInputMessaging='I\'m here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I\'ll be happy to assist you with your TV service needs.',
     blockedOutputsMessaging='I apologize, but I cannot provide that response. Let me help you with your TV service issue in a professional manner.'
 )
@@ -44,7 +57,7 @@ print("\nCreating new version...")
 # Create new version
 version_response = bedrock.create_guardrail_version(
     guardrailIdentifier=GUARDRAIL_ID,
-    description='Updated with HIGH strength for insults/hate and PII blocking for credit cards'
+    description='Added word filters for profanity and managed profanity list'
 )
 
 print(f"\nNew version created: {version_response['version']}")
