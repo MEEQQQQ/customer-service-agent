@@ -55,7 +55,8 @@ def lambda_handler(event, context):
                     'labels': [],
                     'extracted_text': [],
                     'custom_labels': [],
-                    'text_detections': []
+                    'text_detections': [],
+                    'tv_error_detection': []
                 }
                 s3_client.put_object(
                     Bucket=BUCKET_NAME,
@@ -81,7 +82,26 @@ def lambda_handler(event, context):
         
         analysis_results = {}
         
-        # Try custom labels first (if project is trained)
+        # TV Error Detection using specific model
+        tv_error_arn = "arn:aws:rekognition:ap-southeast-1:190403256083:project/tv-error-detection-auto/version/v1/1759937488420"
+        try:
+            tv_error_response = rekognition_client.detect_custom_labels(
+                ProjectVersionArn=tv_error_arn,
+                Image={
+                    'S3Object': {
+                        'Bucket': BUCKET_NAME,
+                        'Name': image_key
+                    }
+                },
+                MinConfidence=50
+            )
+            analysis_results['tv_error_detection'] = tv_error_response.get('CustomLabels', [])
+            logger.info(f"TV error detection completed for session: {session_id}")
+        except Exception as e:
+            logger.error(f"TV error detection failed: {e}")
+            analysis_results['tv_error_detection'] = []
+        
+        # Try custom labels (if project is trained)
         try:
             if REKOGNITION_PROJECT_ARN and REKOGNITION_PROJECT_ARN != "PLACEHOLDER_PROJECT_ARN":
                 custom_response = rekognition_client.detect_custom_labels(

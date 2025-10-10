@@ -78,6 +78,7 @@ def lambda_handler(event, context):
                 'labels': [],
                 'extracted_text': [],
                 'custom_labels': [],
+                'tv_error_detection': [],
                 'timestamp': timestamp
             }
             s3_client.put_object(
