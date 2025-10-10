@@ -70,10 +70,31 @@ def lambda_handler(event, context):
         conversation_history = load_conversation_history(session_id)
         is_first_message = len(conversation_history) == 0
         
-        # Check current message with guardrail FIRST (before ticket creation)
+        # Check for profanity/PII FIRST (before ticket creation)
         guardrail_blocked = False
+        
+        # Simple client-side profanity check
+        profanity_words = ['fuck', 'shit', 'bitch', 'asshole', 'damn', 'bastard', 'cunt', 'dick']
+        pii_patterns = [r'\d{13,19}', r'\d{3}-\d{2}-\d{4}', r'\d{9,12}']  # Credit card, SSN, bank account
+        
+        text_lower = transcript_data['text'].lower()
+        for word in profanity_words:
+            if word in text_lower:
+                print(f"🛡️ Client-side filter blocked profanity: {word}")
+                agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                guardrail_blocked = True
+                break
+        
+        if not guardrail_blocked:
+            for pattern in pii_patterns:
+                if re.search(pattern, transcript_data['text']):
+                    print(f"🛡️ Client-side filter blocked PII pattern")
+                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                    guardrail_blocked = True
+                    break
+        
         print(f"Guardrail config - ID: {GUARDRAIL_ID}, Version: {GUARDRAIL_VERSION}")
-        if GUARDRAIL_ID:
+        if not guardrail_blocked and GUARDRAIL_ID:
             try:
                 test_messages = [{"role": "user", "content": transcript_data['text']}]
                 test_request = json.dumps({
