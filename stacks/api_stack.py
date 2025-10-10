@@ -3,6 +3,7 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_apigateway as apigateway,
     aws_s3 as s3,
+    aws_dynamodb as dynamodb,
     Duration,
     CfnOutput
 )
@@ -11,6 +12,7 @@ from constructs import Construct
 class ApiStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
                  storage_bucket: s3.Bucket, 
+                 ticket_table: dynamodb.Table,
                  rekognition_project_arn: str,
                  bedrock_agent_id: str,
                  **kwargs) -> None:
@@ -76,7 +78,10 @@ class ApiStack(Stack):
             handler="bedrock_handler.lambda_handler",
             code=_lambda.Code.from_asset("lambda_functions/bedrock_handler"),
             timeout=Duration.seconds(60),
-            environment=common_env,
+            environment={
+                **common_env,
+                "TICKET_TABLE_NAME": ticket_table.table_name
+            },
             layers=layers
         )
 
@@ -142,6 +147,9 @@ class ApiStack(Stack):
             session_recap_handler
         ]:
             storage_bucket.grant_read_write(func)
+        
+        # Grant DynamoDB permissions to bedrock_handler
+        ticket_table.grant_read_write_data(bedrock_handler)
 
         # API Gateway
         api = apigateway.RestApi(
