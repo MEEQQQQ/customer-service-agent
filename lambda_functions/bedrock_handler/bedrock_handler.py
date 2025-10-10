@@ -60,9 +60,9 @@ def lambda_handler(event, context):
                 raise
             print(f"No image analysis found for session {session_id}")
         
-        # Generate and store ticket before troubleshooting
-        ticket_id = generate_ticket(session_id, transcript_data['text'], analysis_data)
-        print(f"Generated ticket: {ticket_id}")
+        # Check if ticket already exists for this session, create only once
+        ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
+        print(f"Using ticket: {ticket_id}")
         
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
@@ -233,12 +233,26 @@ def lambda_handler(event, context):
             })
         }
 
-def generate_ticket(session_id, issue_text, analysis_data):
-    """Generate ticket and insert into DynamoDB"""
+def get_or_create_ticket(session_id, issue_text, analysis_data):
+    """Get existing ticket or create new one for session"""
+    # Check if ticket already exists in session metadata
+    try:
+        metadata_obj = s3_client.get_object(
+            Bucket=BUCKET_NAME,
+            Key=f"sessions/{session_id}/metadata.json"
+        )
+        metadata = json.loads(metadata_obj['Body'].read())
+        if 'ticket_id' in metadata:
+            print(f"Ticket already exists for session: {metadata['ticket_id']}")
+            return metadata['ticket_id']
+    except ClientError as e:
+        if e.response['Error']['Code'] != 'NoSuchKey':
+            raise
+    
+    # Create new ticket
     ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
     timestamp = datetime.utcnow().isoformat()
     
-    # Extract issue summary from text and analysis
     labels = [l['Name'] for l in analysis_data.get('labels', [])]
     extracted_text = analysis_data.get('extracted_text', [])
     issue_summary = f"{issue_text[:100]}..." if len(issue_text) > 100 else issue_text
@@ -256,6 +270,7 @@ def generate_ticket(session_id, issue_text, analysis_data):
             'status': 'OPEN'
         }
     )
+    print(f"Created new ticket: {ticket_id}")
     
     return ticket_id
 
@@ -321,7 +336,7 @@ def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_i
     """Build prompt based on complexity and available context"""
     base_prompt = f"""You are a TV customer service agent.
 
-IMPORTANT: Start your response by informing the customer that their ticket {ticket_id} has been created.
+Ticket Reference: {ticket_id}
 
 Customer Issue: {query}
 
@@ -331,8 +346,9 @@ Image Analysis:
 - Custom: {[l['Name'] for l in analysis_data.get('custom_labels', [])]}
 
 Instructions: 
-1. First, acknowledge the ticket creation: "Your ticket {ticket_id} has been created."
+1. Naturally mention the ticket number in your greeting (e.g., "I've created ticket {ticket_id} for your issue" or "I'm here to help with your request, reference number {ticket_id}")
 2. Then provide the troubleshooting solution.
+3. Keep the tone conversational and helpful.
 If the user's query is ambiguous, prompt user for asking again.
 Utilize Knowledge Base context only if user's issue is clear.
 """
@@ -348,9 +364,11 @@ Utilize Knowledge Base context only if user's issue is clear.
     return base_prompt
 
 def format_markdown_response(text):
-    """Format response text for better markdown readability"""
-    # Clean up the text
+    """Format response text for chat-style display"""
     text = text.strip()
+    
+    # Fix any broken ticket IDs (TKT-YYYYMMDD-XXXXXXXX)
+    text = re.sub(r'TKT-\s*(\d{8})\s*-?\s*([A-Z0-9]{8})', r'TKT-\1-\2', text)
     
     # Add proper spacing around numbered lists
     text = re.sub(r'(\d+\.)\s*', r'\n\1 ', text)
@@ -375,11 +393,14 @@ def format_markdown_response(text):
                 sentence += '.'
             formatted_sentences.append(sentence)
     
-    # Join with proper spacing
-    result = ' '.join(formatted_sentences)
+    # Join with line breaks
+    result = '\n\n'.join(formatted_sentences)
     
-    # Add line breaks before questions
-    result = re.sub(r'(\?\s*)([A-Z])', r'\1\n\n\2', result)
+    # Add line breaks before questions (but not after)
+    result = re.sub(r'([^\n])(\?\s*)([A-Z])', r'\1\2\n\n\3', result)
+    
+    # Clean up excessive newlines
+    result = re.sub(r'\n{3,}', '\n\n', result)
     
     return result.strip()
 
