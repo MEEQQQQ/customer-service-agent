@@ -13,7 +13,7 @@ logger.setLevel(logging.INFO)
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
-TICKET_TABLE = os.environ.get('TICKET_TABLE', 'ticket_system')
+TICKET_TABLE = os.environ.get('TICKET_TABLE', 'ticket_log')
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
@@ -139,7 +139,7 @@ def lambda_handler(event, context):
         }
         
     except Exception as e:
-        logger.error(f"Upload failed: {str(e)}")
+        logger.error(f"Upload failed: {str(e)}", exc_info=True)
         return {
             'statusCode': 500,
             'headers': {
@@ -149,6 +149,7 @@ def lambda_handler(event, context):
                 'Content-Type': 'application/json'
             },
             'body': json.dumps({
-                'error': 'Upload failed'
+                'error': 'Upload failed',
+                'details': str(e)
             })
         }
