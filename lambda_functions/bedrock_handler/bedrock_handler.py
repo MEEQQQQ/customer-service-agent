@@ -67,7 +67,7 @@ def lambda_handler(event, context):
             max_tokens = 512 if query_complexity == 'simple' else 1024
             native_request = {
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant that is able to solve Unifi TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills."},
+                    {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills."},
                     {"role": "user", "content": prompt}
                 ],
                 "max_completion_tokens": max_tokens,
@@ -99,7 +99,7 @@ def lambda_handler(event, context):
             # Ensure text is not empty and within limits
             tts_text = agent_response.strip()
             if not tts_text:
-                tts_text = "I understand your concern. Let me help you with your Unifi TV issue."
+                tts_text = "I understand your concern. Let me help you with your TV issue."
             
             # Truncate if too long (Polly limit is ~3000 chars)
             if len(tts_text) > 2500:
@@ -132,7 +132,7 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"TTS generation failed: {str(e)}")
             # Generate fallback audio
-            fallback_text = "I understand your concern. Let me help you with your Unifi TV issue."
+            fallback_text = "I understand your concern. Let me help you with your TV issue."
             tts_response = polly_client.synthesize_speech(
                 Text=fallback_text,
                 OutputFormat='mp3',
@@ -229,7 +229,7 @@ def generate_fallback_response(transcript, analysis):
     detected_text = analysis.get('extracted_text', [])
     labels = [label['Name'] for label in analysis.get('labels', [])]
     
-    response = "I understand you're having issues with your Unifi TV service. "
+    response = "I understand you're having issues with your TV service. "
     
     if 'no service' in transcript.lower() or any('no service' in text.lower() for text in detected_text):
         response += "I can see there's a 'No Service' error. Let me help you with these steps: "
@@ -284,7 +284,7 @@ def get_knowledge_base_context(query, analysis_data):
 
 def build_adaptive_prompt(query, analysis_data, complexity, kb_context):
     """Build prompt based on complexity and available context"""
-    base_prompt = f"""You are a Unifi TV customer service agent.
+    base_prompt = f"""You are a TV customer service agent.
 
 Customer Issue: {query}
 
