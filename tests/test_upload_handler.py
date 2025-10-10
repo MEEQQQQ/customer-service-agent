@@ -47,8 +47,8 @@ def test_upload_handler_success(mock_s3, mock_dynamodb):
     assert 'ticket_id' in response_body
     assert response_body['message'] == 'Files uploaded successfully'
     
-    # Verify S3 calls
-    assert mock_s3.put_object.call_count == 3  # image, audio, metadata
+    # Verify S3 calls: image, audio, metadata (for audio timestamp), session metadata
+    assert mock_s3.put_object.call_count == 4
     # Verify DynamoDB call
     assert mock_table.put_item.call_count == 1
 
