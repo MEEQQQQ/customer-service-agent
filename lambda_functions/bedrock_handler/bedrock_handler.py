@@ -109,6 +109,7 @@ def lambda_handler(event, context):
                     print(f"Using Guardrail: {GUARDRAIL_ID} v{GUARDRAIL_VERSION}")
                 
                 response = bedrock_runtime.invoke_model(**invoke_params)
+                guardrail_blocked = False
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code')
                 
@@ -116,6 +117,7 @@ def lambda_handler(event, context):
                     print(f"🛡️ Guardrail blocked request: {e}")
                     # Use guardrail's configured blocked message
                     agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                    guardrail_blocked = True
                 else:
                     print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
                     raise
@@ -123,18 +125,19 @@ def lambda_handler(event, context):
                 print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
                 raise
 
-            model_response = json.loads(response["body"].read())
+            if not guardrail_blocked:
+                model_response = json.loads(response["body"].read())
 
-            # ✅ Extract only the model-generated text
-            agent_response = model_response["choices"][0]["message"]["content"]
-            agent_response = re.sub(r"<reasoning>.*?</reasoning>", "", agent_response, flags=re.DOTALL).strip()
-            
-            # Log if Guardrail was triggered
-            if 'amazon-bedrock-guardrailAction' in response.get('ResponseMetadata', {}).get('HTTPHeaders', {}):
-                print(f"⚠️ Guardrail action taken: {response['ResponseMetadata']['HTTPHeaders']['amazon-bedrock-guardrailAction']}")
-            
-            # Save conversation to history
-            save_conversation_history(session_id, prompt, agent_response)
+                # ✅ Extract only the model-generated text
+                agent_response = model_response["choices"][0]["message"]["content"]
+                agent_response = re.sub(r"<reasoning>.*?</reasoning>", "", agent_response, flags=re.DOTALL).strip()
+                
+                # Log if Guardrail was triggered
+                if 'amazon-bedrock-guardrailAction' in response.get('ResponseMetadata', {}).get('HTTPHeaders', {}):
+                    print(f"⚠️ Guardrail action taken: {response['ResponseMetadata']['HTTPHeaders']['amazon-bedrock-guardrailAction']}")
+                
+                # Save conversation to history only if not blocked
+                save_conversation_history(session_id, prompt, agent_response)
             
         except Exception as e:
             print(f"Bedrock Llama call failed: {e}")
