@@ -22,6 +22,7 @@ def test_upload_handler_success(mock_s3):
     test_audio = base64.b64encode(b'fake_audio_data').decode()
     
     event = {
+        'httpMethod': 'POST',
         'body': json.dumps({
             'image': test_image,
             'audio': test_audio
@@ -46,6 +47,7 @@ def test_upload_handler_error(mock_s3):
     mock_s3.put_object.side_effect = Exception("S3 Error")
     
     event = {
+        'httpMethod': 'POST',
         'body': json.dumps({
             'image': base64.b64encode(b'fake_image_data').decode()
         })
