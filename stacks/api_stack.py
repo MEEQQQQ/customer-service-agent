@@ -45,7 +45,10 @@ class ApiStack(Stack):
             handler="upload_handler.lambda_handler",
             code=_lambda.Code.from_asset("lambda_functions/upload_handler"),
             timeout=Duration.seconds(30),
-            environment=common_env,
+            environment={
+                **common_env,
+                "TICKET_TABLE": ticket_table.table_name
+            },
             layers=layers
         )
 
@@ -148,7 +151,8 @@ class ApiStack(Stack):
         ]:
             storage_bucket.grant_read_write(func)
         
-        # Grant DynamoDB permissions to bedrock_handler
+        # Grant DynamoDB permissions to upload_handler and bedrock_handler
+        ticket_table.grant_read_write_data(upload_handler)
         ticket_table.grant_read_write_data(bedrock_handler)
 
         # API Gateway
