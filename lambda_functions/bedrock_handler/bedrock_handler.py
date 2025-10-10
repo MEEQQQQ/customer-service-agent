@@ -66,13 +66,42 @@ def lambda_handler(event, context):
                 raise
             print(f"No image analysis found for session {session_id}")
         
-        # Get or create ticket (only creates once per session)
-        ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
-        print(f"Using ticket: {ticket_id}")
-        
         # Load conversation history
         conversation_history = load_conversation_history(session_id)
         is_first_message = len(conversation_history) == 0
+        
+        # Check current message with guardrail FIRST (before ticket creation)
+        guardrail_blocked = False
+        if GUARDRAIL_ID:
+            try:
+                test_messages = [{"role": "user", "content": transcript_data['text']}]
+                test_request = json.dumps({
+                    "messages": test_messages,
+                    "max_completion_tokens": 10,
+                    "temperature": 0.2
+                })
+                bedrock_runtime.invoke_model(
+                    modelId="openai.gpt-oss-120b-1:0",
+                    body=test_request,
+                    guardrailIdentifier=GUARDRAIL_ID,
+                    guardrailVersion=GUARDRAIL_VERSION
+                )
+                print(f"✅ Guardrail check passed")
+            except ClientError as e:
+                if 'guardrail' in str(e).lower():
+                    print(f"🛡️ Guardrail blocked current message: {e}")
+                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                    guardrail_blocked = True
+                else:
+                    raise
+        
+        # Only create ticket if guardrail passed
+        if not guardrail_blocked:
+            ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
+            print(f"Using ticket: {ticket_id}")
+        else:
+            # Use placeholder ticket for blocked messages
+            ticket_id = "BLOCKED"
         
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
@@ -81,31 +110,6 @@ def lambda_handler(event, context):
         # Call Bedrock with adaptive prompt
         try:
             prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id, is_first_message)
-            
-            # Check current message with guardrail first (without history)
-            guardrail_blocked = False
-            if GUARDRAIL_ID:
-                try:
-                    test_messages = [{"role": "user", "content": prompt}]
-                    test_request = json.dumps({
-                        "messages": test_messages,
-                        "max_completion_tokens": 10,
-                        "temperature": 0.2
-                    })
-                    bedrock_runtime.invoke_model(
-                        modelId="openai.gpt-oss-120b-1:0",
-                        body=test_request,
-                        guardrailIdentifier=GUARDRAIL_ID,
-                        guardrailVersion=GUARDRAIL_VERSION
-                    )
-                    print(f"✅ Guardrail check passed")
-                except ClientError as e:
-                    if 'guardrail' in str(e).lower():
-                        print(f"🛡️ Guardrail blocked current message: {e}")
-                        agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
-                        guardrail_blocked = True
-                    else:
-                        raise
             
             if not guardrail_blocked:
                 # Build messages with conversation history
