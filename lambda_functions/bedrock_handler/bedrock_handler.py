@@ -33,9 +33,10 @@ def lambda_handler(event, context):
     try:
         body = json.loads(event['body'])
         session_id = body['session_id']
+        user_text = body.get('text', '')
         
         # Get transcript and image analysis (if they exist)
-        transcript_data = {'text': 'refer to the context provided'}
+        transcript_data = {'text': user_text or 'refer to the context provided'}
         analysis_data = {'labels': [], 'extracted_text': [], 'custom_labels': []}
         
         try:
@@ -44,10 +45,13 @@ def lambda_handler(event, context):
                 Key=f"sessions/{session_id}/transcript.json"
             )
             transcript_data = json.loads(transcript_obj['Body'].read())
+            # Override with new text if provided
+            if user_text:
+                transcript_data['text'] = user_text
         except ClientError as e:
             if e.response['Error']['Code'] != 'NoSuchKey':
                 raise
-            print(f"No transcript found for session {session_id}")
+            print(f"No transcript found for session {session_id}, using provided text")
         
         try:
             analysis_obj = s3_client.get_object(
@@ -60,7 +64,7 @@ def lambda_handler(event, context):
                 raise
             print(f"No image analysis found for session {session_id}")
         
-        # Check if ticket already exists for this session, create only once
+        # Get or create ticket (only creates once per session)
         ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
         print(f"Using ticket: {ticket_id}")
         
@@ -76,9 +80,9 @@ def lambda_handler(event, context):
             prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id)
             
             # Build messages with conversation history
-            messages = [
-                {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."}
-            ]
+            messages = []
+            if not conversation_history:
+                messages.append({"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."})
             messages.extend(conversation_history)
             messages.append({"role": "user", "content": prompt})
 
@@ -259,12 +263,17 @@ def load_conversation_history(session_id):
 def save_conversation_history(session_id, user_message, assistant_message):
     """Save conversation to S3"""
     history = load_conversation_history(session_id)
+    
+    # Add system message only on first interaction
+    if not history:
+        history.append({"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."})
+    
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": assistant_message})
     
-    # Keep only last 10 exchanges (20 messages)
-    if len(history) > 20:
-        history = history[-20:]
+    # Keep only last 10 exchanges (20 messages) + system message
+    if len(history) > 21:
+        history = [history[0]] + history[-20:]
     
     s3_client.put_object(
         Bucket=BUCKET_NAME,
