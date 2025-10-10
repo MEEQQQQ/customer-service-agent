@@ -82,7 +82,7 @@ export default function ChatContainer() {
     }
   }
 
-  const processWithBackend = async (sessionId: string, hasImage: boolean, hasAudio: boolean) => {
+  const processWithBackend = async (sessionId: string, hasImage: boolean, hasAudio: boolean, textContent?: string) => {
     try {
       let stepCount = 1
       const totalSteps = (hasAudio ? 1 : 0) + (hasImage ? 1 : 0) + 1
@@ -114,7 +114,7 @@ export default function ChatContainer() {
       // Step 3: Get troubleshooting response (only if we have successful processing or no files)
       if ((!hasAudio || transcribeSuccess) && (!hasImage || imageAnalysisSuccess)) {
         setProcessingStep(`Step ${stepCount}/${totalSteps}: Generating solution...`)
-        const troubleshootResult = await ApiClient.troubleshoot(sessionId)
+        const troubleshootResult = await ApiClient.troubleshoot(sessionId, textContent)
         
         if (troubleshootResult.error) {
           throw new Error(`Troubleshooting failed: ${troubleshootResult.error}`)
@@ -173,24 +173,28 @@ export default function ChatContainer() {
     try {
       let sessionId: string
       
-      // Upload files or create session with text content
-      setProcessingStep(type === 'text' ? 'Processing message...' : 'Uploading files...')
-      const uploadResult = await ApiClient.uploadFiles(
-        type === 'image' ? file : undefined,
-        type === 'audio' ? file as Blob : undefined,
-        type === 'text' ? content : undefined
-      )
+      // Reuse existing session or create new one
+      if (currentSessionId) {
+        sessionId = currentSessionId
+        setProcessingStep('Processing message...')
+      } else {
+        setProcessingStep(type === 'text' ? 'Creating session...' : 'Uploading files...')
+        const uploadResult = await ApiClient.uploadFiles(
+          type === 'image' ? file : undefined,
+          type === 'audio' ? file as Blob : undefined,
+          type === 'text' ? content : undefined
+        )
 
-      if (uploadResult.error) {
-        throw new Error(`${type === 'text' ? 'Session creation' : 'Upload'} failed: ${uploadResult.error}`)
+        if (uploadResult.error) {
+          throw new Error(`${type === 'text' ? 'Session creation' : 'Upload'} failed: ${uploadResult.error}`)
+        }
+
+        sessionId = uploadResult.data!.session_id
+        setCurrentSessionId(sessionId)
       }
 
-      sessionId = uploadResult.data!.session_id
-      
-      setCurrentSessionId(sessionId)
-
       // Process with backend pipeline
-      await processWithBackend(sessionId, type === 'image', type === 'audio')
+      await processWithBackend(sessionId, type === 'image', type === 'audio', type === 'text' ? content : undefined)
     } catch (error) {
       console.error('Error sending message:', error)
       setProcessingStep('')
