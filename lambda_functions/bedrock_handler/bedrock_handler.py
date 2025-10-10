@@ -72,6 +72,7 @@ def lambda_handler(event, context):
         
         # Check current message with guardrail FIRST (before ticket creation)
         guardrail_blocked = False
+        print(f"Guardrail config - ID: {GUARDRAIL_ID}, Version: {GUARDRAIL_VERSION}")
         if GUARDRAIL_ID:
             try:
                 test_messages = [{"role": "user", "content": transcript_data['text']}]
@@ -80,28 +81,36 @@ def lambda_handler(event, context):
                     "max_completion_tokens": 10,
                     "temperature": 0.2
                 })
-                bedrock_runtime.invoke_model(
+                print(f"Testing message with guardrail: {transcript_data['text'][:50]}...")
+                test_response = bedrock_runtime.invoke_model(
                     modelId="openai.gpt-oss-120b-1:0",
                     body=test_request,
                     guardrailIdentifier=GUARDRAIL_ID,
                     guardrailVersion=GUARDRAIL_VERSION
                 )
-                print(f"✅ Guardrail check passed")
+                print(f"✅ Guardrail check passed for message")
             except ClientError as e:
-                if 'guardrail' in str(e).lower():
-                    print(f"🛡️ Guardrail blocked current message: {e}")
+                error_code = e.response.get('Error', {}).get('Code')
+                print(f"Guardrail check error - Code: {error_code}, Message: {str(e)}")
+                if error_code == 'ValidationException' or 'guardrail' in str(e).lower():
+                    print(f"🛡️ Guardrail BLOCKED message")
                     agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
                     guardrail_blocked = True
                 else:
+                    print(f"Non-guardrail error, re-raising")
                     raise
+            except Exception as e:
+                print(f"Unexpected error during guardrail check: {type(e).__name__} - {str(e)}")
+                raise
         
         # Only create ticket if guardrail passed
         if not guardrail_blocked:
             ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
-            print(f"Using ticket: {ticket_id}")
+            print(f"Ticket created/retrieved: {ticket_id}")
         else:
             # Use placeholder ticket for blocked messages
             ticket_id = "BLOCKED"
+            print(f"No ticket created - message was blocked by guardrail")
         
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
