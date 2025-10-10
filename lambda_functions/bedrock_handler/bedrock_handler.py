@@ -110,7 +110,7 @@ def lambda_handler(event, context):
             tts_response = polly_client.synthesize_speech(
                 Text=tts_text,
                 OutputFormat='mp3',
-                VoiceId='Joanna',
+                VoiceId='Gadis',
                 Engine='standard'
             )
             print("TTS generation successful")
@@ -124,7 +124,7 @@ def lambda_handler(event, context):
                 tts_response = polly_client.synthesize_speech(
                     Text=tts_text,
                     OutputFormat='mp3',
-                    VoiceId='Joanna',
+                    VoiceId='Gadis',
                     Engine='standard'
                 )
             else:
@@ -136,7 +136,7 @@ def lambda_handler(event, context):
             tts_response = polly_client.synthesize_speech(
                 Text=fallback_text,
                 OutputFormat='mp3',
-                VoiceId='Joanna',
+                VoiceId='Gadis',
                 Engine='standard'
             )
         

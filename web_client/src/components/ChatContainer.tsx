@@ -5,7 +5,8 @@ import { Message } from '@/types'
 import { ApiClient } from '@/lib/api'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
-import { Loader2, Tv } from 'lucide-react'
+import SessionRecap from './SessionRecap'
+import { Loader2, Tv, BarChart3 } from 'lucide-react'
 
 export default function ChatContainer() {
   const [messages, setMessages] = useState<Message[]>([
@@ -21,6 +22,8 @@ export default function ChatContainer() {
   const [isRecording, setIsRecording] = useState(false)
   const [recordedAudio, setRecordedAudio] = useState<File | null>(null)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [showRecap, setShowRecap] = useState(false)
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, 'positive' | 'negative'>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -250,14 +253,26 @@ export default function ChatContainer() {
     <div className="flex flex-col h-screen max-w-4xl mx-auto bg-surface shadow-ios-xl rounded-ios-lg overflow-hidden">
       {/* Header */}
       <div className="header-gradient text-white p-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center shadow-ios backdrop-blur-ios">
-            <Tv size={24} />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center shadow-ios backdrop-blur-ios">
+              <Tv size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight">SUARA</h1>
+              <p className="text-sm opacity-90 font-medium">AI-Powered Customer Service</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">SUARA</h1>
-            <p className="text-sm opacity-90 font-medium">AI-Powered Customer Service</p>
-          </div>
+          
+          {currentSessionId && (
+            <button
+              onClick={() => setShowRecap(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-ios rounded-xl transition-colors text-sm font-medium shadow-ios"
+            >
+              <BarChart3 size={16} />
+              End Session
+            </button>
+          )}
         </div>
       </div>
 
@@ -269,6 +284,12 @@ export default function ChatContainer() {
               key={message.id} 
               message={message} 
               onActionClick={executeAction}
+              onFeedback={async (messageId, rating) => {
+                setMessageFeedback(prev => ({ ...prev, [messageId]: rating }))
+                if (currentSessionId) {
+                  await ApiClient.submitFeedback(currentSessionId, rating, '', 'user')
+                }
+              }}
             />
           ))}
           
@@ -315,6 +336,17 @@ export default function ChatContainer() {
           onClearRecordedAudio={() => setRecordedAudio(null)}
         />
       </div>
+
+      {/* Session Recap Modal */}
+      {showRecap && currentSessionId && (
+        <SessionRecap 
+          sessionId={currentSessionId} 
+          onClose={() => setShowRecap(false)}
+          onSubmitFeedback={async (rating, feedbackText) => {
+            await ApiClient.submitFeedback(currentSessionId, rating, feedbackText)
+          }}
+        />
+      )}
     </div>
   )
 }

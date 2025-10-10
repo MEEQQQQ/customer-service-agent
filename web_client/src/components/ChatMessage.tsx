@@ -4,14 +4,22 @@ import { Message } from '@/types'
 import { User, Bot, Volume2 } from 'lucide-react'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
+import { ThumbsUp, ThumbsDown } from 'lucide-react'
 
 interface ChatMessageProps {
   message: Message
   onActionClick?: (action: string) => void
+  onFeedback?: (messageId: string, rating: 'positive' | 'negative') => void
 }
 
-export default function ChatMessage({ message, onActionClick }: ChatMessageProps) {
+export default function ChatMessage({ message, onActionClick, onFeedback }: ChatMessageProps) {
+  const [localFeedback, setLocalFeedback] = useState<'positive' | 'negative' | null>(null)
+
+  const handleFeedback = (rating: 'positive' | 'negative') => {
+    setLocalFeedback(rating)
+    onFeedback?.(message.id, rating)
+  }
   const isUser = message.sender === 'user'
   const audioRef = useRef<HTMLAudioElement>(null)
   const userAudioRef = useRef<HTMLAudioElement>(null)
@@ -128,8 +136,35 @@ export default function ChatMessage({ message, onActionClick }: ChatMessageProps
           </div>
         )}
         
-        <div className={`text-xs mt-2 font-medium ${isUser ? "text-white/80" : "text-text-muted" }`}>
-          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <div className="flex items-center justify-between mt-2">
+          <div className={`text-xs font-medium ${isUser ? "text-white/80" : "text-text-muted" }`}>
+            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+          
+          {!isUser && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleFeedback('positive')}
+                className={`p-1 rounded-lg transition-all ${
+                  localFeedback === 'positive'
+                    ? 'bg-green-100 text-green-600'
+                    : 'hover:bg-surface-100 text-text-muted hover:text-green-600'
+                }`}
+              >
+                <ThumbsUp size={14} />
+              </button>
+              <button
+                onClick={() => handleFeedback('negative')}
+                className={`p-1 rounded-lg transition-all ${
+                  localFeedback === 'negative'
+                    ? 'bg-red-100 text-red-600'
+                    : 'hover:bg-surface-100 text-text-muted hover:text-red-600'
+                }`}
+              >
+                <ThumbsDown size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
