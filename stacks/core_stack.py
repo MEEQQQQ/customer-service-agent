@@ -12,16 +12,10 @@ class CoreStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # DynamoDB table for ticket logging
-        self.ticket_table = dynamodb.Table(
+        # DynamoDB table for ticket logging - import existing table
+        self.ticket_table = dynamodb.Table.from_table_name(
             self, "TicketLogTable",
-            table_name="ticket_log",
-            partition_key=dynamodb.Attribute(
-                name="ticket_id",
-                type=dynamodb.AttributeType.STRING
-            ),
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY
+            table_name="ticket_log"
         )
         
         # S3 bucket for storing images, audio, logs
@@ -128,7 +122,7 @@ class CoreStack(Stack):
                                 "dynamodb:Query",
                                 "dynamodb:Scan"
                             ],
-                            resources=[self.ticket_table.table_arn]
+                            resources=[f"arn:aws:dynamodb:{self.region}:{self.account}:table/ticket_log"]
                         )
                     ]
                 )
