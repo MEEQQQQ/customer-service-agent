@@ -33,9 +33,16 @@ def lambda_handler(event, context):
         logger.info(f"Processing upload request")
         body = json.loads(event['body'])
         
-        # Generate unique session ID and ticket ID
-        session_id = str(uuid.uuid4())
-        ticket_id = f"TKT{datetime.utcnow().strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}"
+        # Use existing session_id if provided, otherwise generate new one
+        session_id = body.get('session_id', str(uuid.uuid4()))
+        is_new_session = 'session_id' not in body
+        
+        # Only create ticket for new sessions
+        if is_new_session:
+            ticket_id = f"TKT{datetime.utcnow().strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}"
+        else:
+            ticket_id = None
+        
         timestamp = datetime.utcnow().isoformat()
         
         # Handle image upload
@@ -91,38 +98,70 @@ def lambda_handler(event, context):
                 ContentType='application/json'
             )
         
-        # Create ticket in DynamoDB
-        table = dynamodb.Table(TICKET_TABLE)
-        table.put_item(
-            Item={
-                'ticket_id': ticket_id,
+        # Create ticket in DynamoDB only for new sessions
+        if is_new_session:
+            table = dynamodb.Table(TICKET_TABLE)
+            table.put_item(
+                Item={
+                    'ticket_id': ticket_id,
+                    'session_id': session_id,
+                    'created_at': timestamp,
+                    'status': 'open',
+                    'has_image': image_key is not None,
+                    'has_audio': audio_key is not None
+                }
+            )
+            logger.info(f"Ticket created: {ticket_id}")
+        else:
+            logger.info(f"Uploading to existing session: {session_id}")
+        
+        # Store or update session metadata
+        if is_new_session:
+            session_data = {
                 'session_id': session_id,
-                'created_at': timestamp,
-                'status': 'open',
-                'has_image': image_key is not None,
-                'has_audio': audio_key is not None
+                'ticket_id': ticket_id,
+                'timestamp': timestamp,
+                'image_key': image_key,
+                'audio_key': audio_key,
+                'status': 'uploaded'
             }
-        )
-        logger.info(f"Ticket created: {ticket_id}")
-        
-        # Store session metadata
-        session_data = {
-            'session_id': session_id,
-            'ticket_id': ticket_id,
-            'timestamp': timestamp,
-            'image_key': image_key,
-            'audio_key': audio_key,
-            'status': 'uploaded'
-        }
-        
-        s3_client.put_object(
-            Bucket=BUCKET_NAME,
-            Key=f"sessions/{session_id}/metadata.json",
-            Body=json.dumps(session_data),
-            ContentType='application/json'
-        )
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=f"sessions/{session_id}/metadata.json",
+                Body=json.dumps(session_data),
+                ContentType='application/json'
+            )
+        else:
+            # Update existing metadata with new files
+            try:
+                metadata_obj = s3_client.get_object(
+                    Bucket=BUCKET_NAME,
+                    Key=f"sessions/{session_id}/metadata.json"
+                )
+                session_data = json.loads(metadata_obj['Body'].read())
+                if image_key:
+                    session_data['image_key'] = image_key
+                if audio_key:
+                    session_data['audio_key'] = audio_key
+                session_data['last_updated'] = timestamp
+                
+                s3_client.put_object(
+                    Bucket=BUCKET_NAME,
+                    Key=f"sessions/{session_id}/metadata.json",
+                    Body=json.dumps(session_data),
+                    ContentType='application/json'
+                )
+            except ClientError:
+                logger.warning(f"Could not update metadata for session {session_id}")
         
         logger.info(f"Upload successful for session: {session_id}")
+        response_body = {
+            'session_id': session_id,
+            'message': 'Files uploaded successfully'
+        }
+        if ticket_id:
+            response_body['ticket_id'] = ticket_id
+        
         return {
             'statusCode': 200,
             'headers': {
@@ -131,11 +170,7 @@ def lambda_handler(event, context):
                 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Content-Type': 'application/json'
             },
-            'body': json.dumps({
-                'session_id': session_id,
-                'ticket_id': ticket_id,
-                'message': 'Files uploaded successfully'
-            })
+            'body': json.dumps(response_body)
         }
         
     except Exception as e:
