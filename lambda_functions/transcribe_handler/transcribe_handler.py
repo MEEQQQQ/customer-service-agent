@@ -27,8 +27,23 @@ def lambda_handler(event, context):
         body = json.loads(event['body'])
         session_id = body['session_id']
         
+        # Get latest audio key from metadata
+        audio_key = None
+        try:
+            metadata_obj = s3_client.get_object(
+                Bucket=BUCKET_NAME,
+                Key=f"sessions/{session_id}/metadata.json"
+            )
+            metadata = json.loads(metadata_obj['Body'].read())
+            audio_key = metadata.get('latest_audio_key')
+        except ClientError:
+            pass
+        
+        # Fallback to default audio.wav if no metadata
+        if not audio_key:
+            audio_key = f"sessions/{session_id}/audio.wav"
+        
         # Check if audio file exists
-        audio_key = f"sessions/{session_id}/audio.wav"
         try:
             s3_client.head_object(Bucket=BUCKET_NAME, Key=audio_key)
         except ClientError as e:
@@ -60,8 +75,9 @@ def lambda_handler(event, context):
             else:
                 raise e
         
-        # Start transcription job
-        job_name = f"transcribe-{session_id}"
+        # Start transcription job with unique name per audio file
+        audio_filename = audio_key.split('/')[-1].replace('.wav', '')
+        job_name = f"transcribe-{session_id}-{audio_filename}"
         audio_uri = f"s3://{BUCKET_NAME}/{audio_key}"
         
         try:

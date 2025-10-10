@@ -57,16 +57,35 @@ def lambda_handler(event, context):
                 ContentType='image/jpeg'
             )
         
-        # Handle audio upload
+        # Handle audio upload with timestamp to prevent caching
         audio_key = None
         if 'audio' in body:
             audio_data = base64.b64decode(body['audio'])
-            audio_key = f"sessions/{session_id}/audio.wav"
+            audio_timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+            audio_key = f"sessions/{session_id}/audio_{audio_timestamp}.wav"
             s3_client.put_object(
                 Bucket=BUCKET_NAME,
                 Key=audio_key,
                 Body=audio_data,
                 ContentType='audio/wav'
+            )
+            
+            # Store latest audio key in metadata for transcribe handler
+            try:
+                metadata_obj = s3_client.get_object(
+                    Bucket=BUCKET_NAME,
+                    Key=f"sessions/{session_id}/metadata.json"
+                )
+                session_data = json.loads(metadata_obj['Body'].read())
+            except:
+                session_data = {}
+            
+            session_data['latest_audio_key'] = audio_key
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=f"sessions/{session_id}/metadata.json",
+                Body=json.dumps(session_data),
+                ContentType='application/json'
             )
         
         # Handle text-only requests by creating default transcript
