@@ -288,6 +288,7 @@ def get_or_create_ticket(session_id, issue_text, analysis_data):
     except ClientError as e:
         if e.response['Error']['Code'] != 'NoSuchKey':
             raise
+        metadata = {}
     
     # Create new ticket (format: TKT202510109F18F862)
     ticket_id = f"TKT{datetime.utcnow().strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}"
@@ -311,6 +312,15 @@ def get_or_create_ticket(session_id, issue_text, analysis_data):
         }
     )
     print(f"Created new ticket: {ticket_id}")
+    
+    # Save ticket_id to metadata
+    metadata['ticket_id'] = ticket_id
+    s3_client.put_object(
+        Bucket=BUCKET_NAME,
+        Key=f"sessions/{session_id}/metadata.json",
+        Body=json.dumps(metadata),
+        ContentType='application/json'
+    )
     
     return ticket_id
 
