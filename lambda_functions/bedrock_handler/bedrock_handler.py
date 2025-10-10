@@ -334,6 +334,9 @@ def get_knowledge_base_context(query, analysis_data):
 
 def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_id):
     """Build prompt based on complexity and available context"""
+    # Extract TV error detection results
+    tv_errors = [l['Name'] for l in analysis_data.get('tv_error_detection', [])]
+    
     base_prompt = f"""You are a TV customer service agent.
 
 Ticket Reference: {ticket_id}
@@ -341,15 +344,16 @@ Ticket Reference: {ticket_id}
 Customer Issue: {query}
 
 Image Analysis:
+- Detected TV Errors: {tv_errors if tv_errors else 'None'}
 - Labels: {[l['Name'] for l in analysis_data.get('labels', [])]}
 - Text: {analysis_data.get('extracted_text', [])}
 - Custom: {[l['Name'] for l in analysis_data.get('custom_labels', [])]}
 
 Instructions: 
 1. Naturally mention the ticket number in your greeting (e.g., "I've created ticket {ticket_id} for your issue" or "I'm here to help with your request, reference number {ticket_id}")
-2. Then provide the troubleshooting solution.
+2. If TV errors are detected, use them to identify the issue and provide specific troubleshooting steps.
 3. Keep the tone conversational and helpful.
-If the user's query is ambiguous, prompt user for asking again.
+If the user's query is ambiguous and no TV errors detected, prompt user for asking again.
 Utilize Knowledge Base context only if user's issue is clear.
 """
     
