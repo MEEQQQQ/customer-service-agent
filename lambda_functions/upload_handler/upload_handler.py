@@ -15,7 +15,7 @@ BUCKET_NAME = os.environ['STORAGE_BUCKET']
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
-    if event['httpMethod'] == 'OPTIONS':
+    if event.get('httpMethod') == 'OPTIONS':
         return {
             'statusCode': 200,
             'headers': {

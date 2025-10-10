@@ -23,7 +23,7 @@ def sanitize_session_id(session_id):
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
-    if event['httpMethod'] == 'OPTIONS':
+    if event.get('httpMethod') == 'OPTIONS':
         return {
             'statusCode': 200,
             'headers': {
