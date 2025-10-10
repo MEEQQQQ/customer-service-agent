@@ -11,9 +11,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 s3_client = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
-TICKET_TABLE = os.environ.get('TICKET_TABLE', 'ticket_system')
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
@@ -33,9 +31,8 @@ def lambda_handler(event, context):
         logger.info(f"Processing upload request")
         body = json.loads(event['body'])
         
-        # Generate unique session ID and ticket ID
+        # Generate unique session ID
         session_id = str(uuid.uuid4())
-        ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
         timestamp = datetime.utcnow().isoformat()
         
         # Handle image upload
@@ -91,24 +88,9 @@ def lambda_handler(event, context):
                 ContentType='application/json'
             )
         
-        # Create ticket in DynamoDB
-        table = dynamodb.Table(TICKET_TABLE)
-        table.put_item(
-            Item={
-                'ticket_id': ticket_id,
-                'session_id': session_id,
-                'created_at': timestamp,
-                'status': 'open',
-                'has_image': image_key is not None,
-                'has_audio': audio_key is not None
-            }
-        )
-        logger.info(f"Ticket created: {ticket_id}")
-        
         # Store session metadata
         session_data = {
             'session_id': session_id,
-            'ticket_id': ticket_id,
             'timestamp': timestamp,
             'image_key': image_key,
             'audio_key': audio_key,
@@ -133,7 +115,6 @@ def lambda_handler(event, context):
             },
             'body': json.dumps({
                 'session_id': session_id,
-                'ticket_id': ticket_id,
                 'message': 'Files uploaded successfully'
             })
         }

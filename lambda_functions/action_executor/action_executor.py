@@ -82,10 +82,6 @@ def execute_action(action, session_id):
         return reprovision_service(session_id)
     elif action == 'check_subscription':
         return check_subscription_status(session_id)
-    elif action == 'refresh_account_billing':
-        return refresh_account_billing(session_id)
-    elif action == 'check_account_biling':
-        return check_account_billing(session_id)
     else:
         return {
             'success': False,
@@ -134,36 +130,5 @@ def check_subscription_status(session_id):
             'status': 'active',
             'expiry_date': '2024-12-31',
             'package': 'Unifi TV Ultimate'
-        }
-    }
-    
-def refresh_account_billing(session_id):
-    """Simulate refreshing account billing information"""
-    # In a real implementation, this would call the actual billing API
-    print(f"Refreshing account billing for session {session_id}")
-    
-    return {
-        'success': True,
-        'message': 'Account billing information refreshed successfully',
-        'details': {
-            'action_type': 'billing_refresh',
-            'last_billed_date': '2024-05-01',
-            'next_billing_date': '2024-06-01'
-        }
-    }
-    
-def check_account_billing(session_id):
-    """Simulate checking account billing information"""
-    # In a real implementation, this would call the actual billing API
-    print(f"Checking account billing for session {session_id}")
-    
-    return {
-        'success': True,
-        'message': 'Account billing information retrieved successfully',
-        'details': {
-            'action_type': 'billing_check',
-            'outstanding_balance': 'RM 200.00',
-            'due_date': '2024-06-01',
-            'last_payment_date': '2024-08-01'
         }
     }

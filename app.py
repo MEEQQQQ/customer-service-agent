@@ -17,7 +17,6 @@ ml_stack = MLStack(app, "CustomerServiceML",
 # API and Lambda functions
 api_stack = ApiStack(app, "CustomerServiceApi",
                      storage_bucket=core_stack.storage_bucket,
-                     ticket_table=core_stack.ticket_table,
                      rekognition_project_arn=ml_stack.rekognition_project_arn,
                      bedrock_agent_id=ml_stack.bedrock_agent_id)
 
