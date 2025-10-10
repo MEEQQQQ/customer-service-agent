@@ -2,7 +2,6 @@ from aws_cdk import (
     Stack,
     aws_s3 as s3,
     aws_iam as iam,
-    aws_dynamodb as dynamodb,
     RemovalPolicy,
     Duration
 )
@@ -12,18 +11,6 @@ class CoreStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # DynamoDB table for ticket logging
-        self.ticket_table = dynamodb.Table(
-            self, "TicketLogTable",
-            table_name="ticket_log",
-            partition_key=dynamodb.Attribute(
-                name="ticket_id",
-                type=dynamodb.AttributeType.STRING
-            ),
-            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY
-        )
-        
         # S3 bucket for storing images, audio, logs
         self.storage_bucket = s3.Bucket(
             self, "StorageBucket",
@@ -115,20 +102,6 @@ class CoreStack(Stack):
                                 "bedrock:InvokeModel"
                             ],
                             resources=["*"]
-                        )
-                    ]
-                ),
-                "DynamoDBAccess": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            effect=iam.Effect.ALLOW,
-                            actions=[
-                                "dynamodb:PutItem",
-                                "dynamodb:GetItem",
-                                "dynamodb:Query",
-                                "dynamodb:Scan"
-                            ],
-                            resources=[self.ticket_table.table_arn]
                         )
                     ]
                 )
