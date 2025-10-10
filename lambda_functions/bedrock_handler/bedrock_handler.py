@@ -425,9 +425,29 @@ def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_i
     tv_errors = [l['Name'] for l in analysis_data.get('tv_error_detection', [])]
     has_visual_context = tv_errors or analysis_data.get('labels') or analysis_data.get('extracted_text')
     
+    # Detect if this is an actual issue or casual chat
+    query_lower = query.lower()
+    issue_keywords = ['error', 'not working', 'problem', 'issue', 'broken', 'fix', 'help', 'no signal', 
+                      'black screen', 'no service', 'cant', "can't", 'unable', 'failed', 'wrong']
+    casual_keywords = ['hello', 'hi', 'hey', 'thanks', 'thank you', 'good', 'great', 'okay', 'ok']
+    
+    is_issue = any(keyword in query_lower for keyword in issue_keywords) or has_visual_context
+    is_casual = any(keyword in query_lower for keyword in casual_keywords) and not is_issue
+    
     # Build context-aware prompt
     if is_first_message:
-        base_prompt = f"""Customer Query: {query}
+        if is_casual:
+            # Casual greeting - no ticket mention
+            base_prompt = f"""Customer Query: {query}
+
+Instructions:
+1. Respond warmly and naturally to the greeting
+2. Ask how you can help with their TV service
+3. Be friendly and conversational
+4. DO NOT mention ticket numbers for casual greetings"""
+        else:
+            # Actual issue - mention ticket
+            base_prompt = f"""Customer Query: {query}
 
 Ticket: {ticket_id}
 
@@ -437,12 +457,19 @@ Context:
 - Screen Text: {analysis_data.get('extracted_text', [])}
 
 Instructions:
-1. Greet naturally and mention ticket number once (e.g., "I've created ticket {ticket_id} to help you")
+1. This is a technical issue - mention ticket number once (e.g., "I've created ticket {ticket_id} to help you")
 2. Address the specific issue mentioned
-3. Be conversational and helpful"""
+3. Provide troubleshooting steps"""
     else:
-        # Follow-up message - focus on current query only
-        if has_visual_context:
+        # Follow-up message
+        if is_casual:
+            base_prompt = f"""Customer Query: {query}
+
+Instructions:
+1. Respond naturally to the message
+2. Be conversational and friendly
+3. DO NOT mention ticket numbers for casual responses"""
+        elif has_visual_context:
             base_prompt = f"""Customer Query: {query}
 
 New Context:
@@ -455,7 +482,6 @@ Instructions:
 2. If it's a new topic, address it directly without referring back to previous issues
 3. Be conversational like a human agent"""
         else:
-            # Pure text follow-up
             base_prompt = f"""Customer Query: {query}
 
 Instructions:
@@ -463,7 +489,7 @@ Instructions:
 2. If topic changed, follow the new topic
 3. Be conversational and helpful"""
     
-    if kb_context:
+    if kb_context and is_issue:
         base_prompt += f"\n\nKnowledge: {kb_context}"
     
     if complexity == 'simple':

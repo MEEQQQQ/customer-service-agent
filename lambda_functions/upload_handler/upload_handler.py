@@ -69,24 +69,6 @@ def lambda_handler(event, context):
                 Body=audio_data,
                 ContentType='audio/wav'
             )
-            
-            # Store latest audio key in metadata for transcribe handler
-            try:
-                metadata_obj = s3_client.get_object(
-                    Bucket=BUCKET_NAME,
-                    Key=f"sessions/{session_id}/metadata.json"
-                )
-                session_data = json.loads(metadata_obj['Body'].read())
-            except:
-                session_data = {}
-            
-            session_data['latest_audio_key'] = audio_key
-            s3_client.put_object(
-                Bucket=BUCKET_NAME,
-                Key=f"sessions/{session_id}/metadata.json",
-                Body=json.dumps(session_data),
-                ContentType='application/json'
-            )
         
         # Handle text-only requests by creating default transcript
         if not audio_key and not image_key:
@@ -135,43 +117,39 @@ def lambda_handler(event, context):
             logger.info(f"Uploading to existing session: {session_id}")
         
         # Store or update session metadata
-        if is_new_session:
+        try:
+            # Try to get existing metadata
+            metadata_obj = s3_client.get_object(
+                Bucket=BUCKET_NAME,
+                Key=f"sessions/{session_id}/metadata.json"
+            )
+            session_data = json.loads(metadata_obj['Body'].read())
+            logger.info(f"Updating existing metadata for session {session_id}")
+        except:
+            # Create new metadata if doesn't exist
             session_data = {
                 'session_id': session_id,
                 'ticket_id': ticket_id,
                 'timestamp': timestamp,
-                'image_key': image_key,
-                'audio_key': audio_key,
                 'status': 'uploaded'
             }
-            s3_client.put_object(
-                Bucket=BUCKET_NAME,
-                Key=f"sessions/{session_id}/metadata.json",
-                Body=json.dumps(session_data),
-                ContentType='application/json'
-            )
-        else:
-            # Update existing metadata with new files
-            try:
-                metadata_obj = s3_client.get_object(
-                    Bucket=BUCKET_NAME,
-                    Key=f"sessions/{session_id}/metadata.json"
-                )
-                session_data = json.loads(metadata_obj['Body'].read())
-                if image_key:
-                    session_data['image_key'] = image_key
-                if audio_key:
-                    session_data['audio_key'] = audio_key
-                session_data['last_updated'] = timestamp
-                
-                s3_client.put_object(
-                    Bucket=BUCKET_NAME,
-                    Key=f"sessions/{session_id}/metadata.json",
-                    Body=json.dumps(session_data),
-                    ContentType='application/json'
-                )
-            except ClientError:
-                logger.warning(f"Could not update metadata for session {session_id}")
+            logger.info(f"Creating new metadata for session {session_id}")
+        
+        # Update with new file keys
+        if image_key:
+            session_data['image_key'] = image_key
+        if audio_key:
+            session_data['audio_key'] = audio_key
+            session_data['latest_audio_key'] = audio_key
+        session_data['last_updated'] = timestamp
+        
+        # Save metadata
+        s3_client.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"sessions/{session_id}/metadata.json",
+            Body=json.dumps(session_data),
+            ContentType='application/json'
+        )
         
         logger.info(f"Upload successful for session: {session_id}")
         response_body = {
