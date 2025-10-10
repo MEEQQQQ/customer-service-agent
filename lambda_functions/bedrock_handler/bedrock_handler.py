@@ -111,18 +111,11 @@ def lambda_handler(event, context):
                 response = bedrock_runtime.invoke_model(**invoke_params)
             except ClientError as e:
                 error_code = e.response.get('Error', {}).get('Code')
-                error_message = str(e).lower()
                 
-                if error_code == 'ValidationException' and 'guardrail' in error_message:
+                if error_code == 'ValidationException' and 'guardrail' in str(e).lower():
                     print(f"🛡️ Guardrail blocked request: {e}")
-                    
-                    # Determine block reason and provide appropriate message
-                    if 'sensitive' in error_message or 'pii' in error_message:
-                        agent_response = "I noticed your message contains sensitive personal information. For your security, I cannot process requests with credit card numbers, social security numbers, or bank account details. Please rephrase your message without including this information, and I'll be happy to help you."
-                    elif 'content policy' in error_message or 'harmful' in error_message:
-                        agent_response = "I'm here to provide helpful and respectful customer service. Let's keep our conversation professional and focused on resolving your TV service issue. How can I assist you today?"
-                    else:
-                        agent_response = "I'm unable to process that request due to content restrictions. Please rephrase your message, and I'll do my best to help you with your TV service needs."
+                    # Use guardrail's configured blocked message
+                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
                 else:
                     print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
                     raise
