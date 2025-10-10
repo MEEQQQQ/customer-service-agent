@@ -64,8 +64,12 @@ export class ApiClient {
     return this.makeRequest('/analyze-image', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
   }
 
-  static async troubleshoot(sessionId: string): Promise<ApiResponse<TroubleshootResponse>> {
-    return this.makeRequest<TroubleshootResponse>('/troubleshoot', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
+  static async troubleshoot(sessionId: string, text?: string | undefined): Promise<ApiResponse<TroubleshootResponse>> {
+    const body: any = { session_id: sessionId }
+    if (text !== undefined) {
+      body.text = text
+    }
+    return this.makeRequest<TroubleshootResponse>('/troubleshoot', { method: 'POST', body: JSON.stringify(body) })
   }
 
   static async executeAction(sessionId: string, action: string): Promise<ApiResponse<{message: string}>> {

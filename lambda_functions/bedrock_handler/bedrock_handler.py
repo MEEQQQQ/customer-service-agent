@@ -14,6 +14,8 @@ dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
 KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'VARVMASHNX')
 TICKET_TABLE_NAME = os.environ.get('TICKET_TABLE_NAME', 'ticket_log')
+GUARDRAIL_ID = os.environ.get('GUARDRAIL_ID', '')
+GUARDRAIL_VERSION = os.environ.get('GUARDRAIL_VERSION', 'DRAFT')
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
@@ -97,16 +99,36 @@ def lambda_handler(event, context):
 
             try:
                 model_id = "openai.gpt-oss-120b-1:0"
-                response = bedrock_runtime.invoke_model(modelId=model_id, body=request)
+                
+                # Apply Guardrail if configured
+                invoke_params = {'modelId': model_id, 'body': request}
+                if GUARDRAIL_ID:
+                    invoke_params['guardrailIdentifier'] = GUARDRAIL_ID
+                    invoke_params['guardrailVersion'] = GUARDRAIL_VERSION
+                    print(f"Using Guardrail: {GUARDRAIL_ID} v{GUARDRAIL_VERSION}")
+                
+                response = bedrock_runtime.invoke_model(**invoke_params)
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code')
+                if error_code == 'ValidationException' and 'guardrail' in str(e).lower():
+                    print(f"🛡️ Guardrail blocked request: {e}")
+                    agent_response = "I cannot process this request as it contains sensitive information. Please remove any credit card numbers, SSN, or bank account details and try again."
+                else:
+                    print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
+                    raise
             except Exception as e:
                 print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
-                exit(1)
+                raise
 
             model_response = json.loads(response["body"].read())
 
             # ✅ Extract only the model-generated text
             agent_response = model_response["choices"][0]["message"]["content"]
             agent_response = re.sub(r"<reasoning>.*?</reasoning>", "", agent_response, flags=re.DOTALL).strip()
+            
+            # Log if Guardrail was triggered
+            if 'amazon-bedrock-guardrailAction' in response.get('ResponseMetadata', {}).get('HTTPHeaders', {}):
+                print(f"⚠️ Guardrail action taken: {response['ResponseMetadata']['HTTPHeaders']['amazon-bedrock-guardrailAction']}")
             
             # Save conversation to history
             save_conversation_history(session_id, prompt, agent_response)

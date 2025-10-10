@@ -1,0 +1,40 @@
+{
+  "piiEntitiesConfig": [
+    {
+      "type": "EMAIL",
+      "action": "ANONYMIZE"
+    },
+    {
+      "type": "PHONE",
+      "action": "ANONYMIZE"
+    },
+    {
+      "type": "NAME",
+      "action": "ANONYMIZE"
+    },
+    {
+      "type": "ADDRESS",
+      "action": "ANONYMIZE"
+    },
+    {
+      "type": "CREDIT_DEBIT_CARD_NUMBER",
+      "action": "BLOCK"
+    },
+    {
+      "type": "US_SOCIAL_SECURITY_NUMBER",
+      "action": "BLOCK"
+    },
+    {
+      "type": "US_BANK_ACCOUNT_NUMBER",
+      "action": "BLOCK"
+    },
+    {
+      "type": "US_PASSPORT_NUMBER",
+      "action": "BLOCK"
+    },
+    {
+      "type": "DRIVER_ID",
+      "action": "ANONYMIZE"
+    }
+  ]
+}
