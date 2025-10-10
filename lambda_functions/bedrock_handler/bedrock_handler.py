@@ -64,6 +64,9 @@ def lambda_handler(event, context):
         ticket_id = get_or_create_ticket(session_id, transcript_data['text'], analysis_data)
         print(f"Using ticket: {ticket_id}")
         
+        # Load conversation history
+        conversation_history = load_conversation_history(session_id)
+        
         # Analyze query complexity and get knowledge base context
         query_complexity = analyze_query_complexity(transcript_data['text'])
         kb_context = get_knowledge_base_context(transcript_data['text'], analysis_data)
@@ -71,13 +74,17 @@ def lambda_handler(event, context):
         # Call Bedrock with adaptive prompt
         try:
             prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id)
+            
+            # Build messages with conversation history
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."}
+            ]
+            messages.extend(conversation_history)
+            messages.append({"role": "user", "content": prompt})
 
             max_tokens = 512 if query_complexity == 'simple' else 1024
             native_request = {
-                "messages": [
-                    {"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."},
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": messages,
                 "max_completion_tokens": max_tokens,
                 "temperature": 0.2,
             }
@@ -96,7 +103,9 @@ def lambda_handler(event, context):
             # ✅ Extract only the model-generated text
             agent_response = model_response["choices"][0]["message"]["content"]
             agent_response = re.sub(r"<reasoning>.*?</reasoning>", "", agent_response, flags=re.DOTALL).strip()
-
+            
+            # Save conversation to history
+            save_conversation_history(session_id, prompt, agent_response)
             
         except Exception as e:
             print(f"Bedrock Llama call failed: {e}")
@@ -233,6 +242,37 @@ def lambda_handler(event, context):
             })
         }
 
+def load_conversation_history(session_id):
+    """Load conversation history from S3"""
+    try:
+        history_obj = s3_client.get_object(
+            Bucket=BUCKET_NAME,
+            Key=f"sessions/{session_id}/conversation_history.json"
+        )
+        history = json.loads(history_obj['Body'].read())
+        return history.get('messages', [])
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            return []
+        raise
+
+def save_conversation_history(session_id, user_message, assistant_message):
+    """Save conversation to S3"""
+    history = load_conversation_history(session_id)
+    history.append({"role": "user", "content": user_message})
+    history.append({"role": "assistant", "content": assistant_message})
+    
+    # Keep only last 10 exchanges (20 messages)
+    if len(history) > 20:
+        history = history[-20:]
+    
+    s3_client.put_object(
+        Bucket=BUCKET_NAME,
+        Key=f"sessions/{session_id}/conversation_history.json",
+        Body=json.dumps({'messages': history}),
+        ContentType='application/json'
+    )
+
 def get_or_create_ticket(session_id, issue_text, analysis_data):
     """Get existing ticket or create new one for session"""
     # Check if ticket already exists in session metadata
@@ -249,8 +289,8 @@ def get_or_create_ticket(session_id, issue_text, analysis_data):
         if e.response['Error']['Code'] != 'NoSuchKey':
             raise
     
-    # Create new ticket
-    ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    # Create new ticket (format: TKT202510109F18F862)
+    ticket_id = f"TKT{datetime.utcnow().strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}"
     timestamp = datetime.utcnow().isoformat()
     
     labels = [l['Name'] for l in analysis_data.get('labels', [])]
@@ -368,40 +408,33 @@ Utilize Knowledge Base context only if user's issue is clear.
     return base_prompt
 
 def format_markdown_response(text):
-    """Format response text for chat-style display"""
+    """Format response text for mobile chat display"""
     text = text.strip()
     
-    # Fix any broken ticket IDs (TKT-YYYYMMDD-XXXXXXXX)
-    text = re.sub(r'TKT-\s*(\d{8})\s*-?\s*([A-Z0-9]{8})', r'TKT-\1-\2', text)
+    # Fix broken ticket IDs (handle any format with spaces/newlines)
+    text = re.sub(r'TKT\s*(\d{8})\s*([A-Z0-9]{8})', r'TKT\1\2', text)
+    # Make ticket IDs bold
+    text = re.sub(r'(?<!\*)\bTKT(\d{8})([A-Z0-9]{8})\b(?!\*)', r'**TKT\1\2**', text)
     
-    # Add proper spacing around numbered lists
-    text = re.sub(r'(\d+\.)\s*', r'\n\1 ', text)
+    # Split into sentences for mobile-friendly paragraphs
+    sentences = re.split(r'([.!?])\s+', text)
+    formatted_parts = []
+    current_sentence = ''
     
-    # Add proper spacing around bullet points
-    text = re.sub(r'([•-])\s*', r'\n\1 ', text)
+    for i, part in enumerate(sentences):
+        if i % 2 == 0:
+            current_sentence = part
+        else:
+            current_sentence += part
+            if current_sentence.strip():
+                formatted_parts.append(current_sentence.strip())
+            current_sentence = ''
     
-    # Add spacing around bold text
-    text = re.sub(r'\*\*(.*?)\*\*', r'\n**\1**\n', text)
+    if current_sentence.strip():
+        formatted_parts.append(current_sentence.strip())
     
-    # Clean up multiple newlines
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    
-    # Ensure proper paragraph spacing
-    sentences = text.split('. ')
-    formatted_sentences = []
-    
-    for i, sentence in enumerate(sentences):
-        sentence = sentence.strip()
-        if sentence:
-            if i < len(sentences) - 1:
-                sentence += '.'
-            formatted_sentences.append(sentence)
-    
-    # Join with line breaks
-    result = '\n\n'.join(formatted_sentences)
-    
-    # Add line breaks before questions (but not after)
-    result = re.sub(r'([^\n])(\?\s*)([A-Z])', r'\1\2\n\n\3', result)
+    # Join with double line breaks for mobile readability
+    result = '\n\n'.join(formatted_parts)
     
     # Clean up excessive newlines
     result = re.sub(r'\n{3,}', '\n\n', result)
