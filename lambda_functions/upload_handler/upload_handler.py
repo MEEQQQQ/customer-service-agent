@@ -35,7 +35,7 @@ def lambda_handler(event, context):
         
         # Generate unique session ID and ticket ID
         session_id = str(uuid.uuid4())
-        ticket_id = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+        ticket_id = f"TKT{datetime.utcnow().strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}"
         timestamp = datetime.utcnow().isoformat()
         
         # Handle image upload
