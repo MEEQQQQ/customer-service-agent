@@ -21,18 +21,18 @@ def lambda_handler(event, context):
     
     try:
         body = json.loads(event['body'])
-        session_id = body['session_id']
-        vote_type = body['vote_type']  # 'positive' or 'negative'
-        username = body.get('username', 'anonymous')
+        session_id = body.get('session_id', 'unknown')
+        vote_type = body.get('vote_type', 'positive')
+        username = body.get('username', 'user')
         feedback_text = body.get('feedback_text', '')
         
+        # Use username as partition key to match existing table
         item = {
-            'session_id': session_id,
             'username': username,
             'vote_type': vote_type,
+            'session_id': session_id,
             'feedback_text': feedback_text,
-            'timestamp': datetime.utcnow().isoformat(),
-            'created_at': int(datetime.utcnow().timestamp())
+            'timestamp': datetime.utcnow().isoformat()
         }
         
         table.put_item(Item=item)

@@ -22,9 +22,9 @@ def lambda_handler(event, context):
     try:
         session_id = event['pathParameters']['session_id']
         
-        # Get feedback stats
-        response = feedback_table.query(
-            KeyConditionExpression='session_id = :sid',
+        # Get feedback stats using scan (username is partition key, not session_id)
+        response = feedback_table.scan(
+            FilterExpression='session_id = :sid',
             ExpressionAttributeValues={':sid': session_id}
         )
         
