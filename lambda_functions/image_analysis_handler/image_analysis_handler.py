@@ -134,29 +134,31 @@ def lambda_handler(event, context):
             analysis_results['custom_labels'] = []
         
         # Fallback to standard label detection
-        labels_response = rekognition_client.detect_labels(
-            Image={
-                'S3Object': {
-                    'Bucket': BUCKET_NAME,
-                    'Name': image_key
-                }
-            },
-            MaxLabels=20,
-            MinConfidence=70
-        )
-        analysis_results['labels'] = labels_response.get('Labels', [])
+        # labels_response = rekognition_client.detect_labels(
+        #     Image={
+        #         'S3Object': {
+        #             'Bucket': BUCKET_NAME,
+        #             'Name': image_key
+        #         }
+        #     },
+        #     MaxLabels=20,
+        #     MinConfidence=70
+        # )
+        # analysis_results['labels'] = labels_response.get('Labels', [])
+        analysis_results['labels'] = []
         
         # Text detection for error messages
-        text_response = rekognition_client.detect_text(
-            Image={
-                'S3Object': {
-                    'Bucket': BUCKET_NAME,
-                    'Name': image_key
-                }
-            }
-        )
-        analysis_results['text_detections'] = text_response.get('TextDetections', [])
-        
+        # text_response = rekognition_client.detect_text(
+        #     Image={
+        #         'S3Object': {
+        #             'Bucket': BUCKET_NAME,
+        #             'Name': image_key
+        #         }
+        #     }
+        # )
+        # analysis_results['text_detections'] = text_response.get('TextDetections', [])
+        analysis_results['text_detections'] = []
+
         # Extract meaningful text
         detected_text = []
         for text_detection in analysis_results['text_detections']:
