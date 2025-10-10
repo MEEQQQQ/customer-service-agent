@@ -15,7 +15,7 @@ BUCKET_NAME = os.environ['STORAGE_BUCKET']
 
 def lambda_handler(event, context):
     # Handle CORS preflight requests
-    if event['httpMethod'] == 'OPTIONS':
+    if event.get('httpMethod') == 'OPTIONS':
         return {
             'statusCode': 200,
             'headers': {
@@ -78,6 +78,7 @@ def lambda_handler(event, context):
                 'labels': [],
                 'extracted_text': [],
                 'custom_labels': [],
+                'tv_error_detection': [],
                 'timestamp': timestamp
             }
             s3_client.put_object(
