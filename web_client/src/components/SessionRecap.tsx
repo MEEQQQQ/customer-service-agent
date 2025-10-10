@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ThumbsUp, ThumbsDown, TrendingUp, Clock, CheckCircle, Zap, MessageSquare, Send } from 'lucide-react'
+import { ThumbsUp, ThumbsDown, TrendingUp, Clock, CheckCircle, Zap, MessageSquare, Send, ChevronDown, ChevronUp, Code, HelpCircle } from 'lucide-react'
 
 interface SessionRecapProps {
   sessionId: string
@@ -33,6 +33,9 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
   const [selectedRating, setSelectedRating] = useState<'positive' | 'negative' | null>(null)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [advancedData, setAdvancedData] = useState<any>(null)
+  const [loadingAdvanced, setLoadingAdvanced] = useState(false)
 
   const handleSubmitFeedback = async () => {
     if (!selectedRating) return
@@ -50,20 +53,45 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
     }
   }
 
-  const fetchRecap = async () => {
+  const fetchRecap = async (includeAdvanced = false) => {
     setLoading(true)
     setError(null)
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
-      const response = await fetch(`${apiUrl}/session-recap/${sessionId}`)
+      const url = includeAdvanced 
+        ? `${apiUrl}/session-recap/${sessionId}?advanced=true`
+        : `${apiUrl}/session-recap/${sessionId}`
+      const response = await fetch(url)
       if (!response.ok) throw new Error('Failed to fetch recap')
       const data = await response.json()
       setRecapData(data)
+      if (includeAdvanced && data.advanced_metrics) {
+        setAdvancedData(data.advanced_metrics)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
     }
+  }
+
+  const toggleAdvanced = async () => {
+    if (!showAdvanced && !advancedData) {
+      setLoadingAdvanced(true)
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || ''
+        const response = await fetch(`${apiUrl}/session-recap/${sessionId}?advanced=true`)
+        if (response.ok) {
+          const data = await response.json()
+          setAdvancedData(data.advanced_metrics)
+        }
+      } catch (err) {
+        console.error('Failed to load advanced metrics:', err)
+      } finally {
+        setLoadingAdvanced(false)
+      }
+    }
+    setShowAdvanced(!showAdvanced)
   }
 
   const getColor = (value: number, thresholds: { good: number; moderate: number }) => {
@@ -213,6 +241,85 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
                   </div>
                 </div>
               )}
+
+              {/* Stats for Nerds Section */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  onClick={toggleAdvanced}
+                  className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <Code size={18} className="text-gray-600" />
+                    <div>
+                      <span className="font-semibold text-gray-900">Stats for Nerds 🤓</span>
+                      <p className="text-xs text-gray-500">Peek under the hood</p>
+                    </div>
+                  </div>
+                  {loadingAdvanced ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                  ) : (
+                    showAdvanced ? <ChevronUp size={18} /> : <ChevronDown size={18} />
+                  )}
+                </button>
+
+                {showAdvanced && advancedData && (
+                  <div className="p-4 bg-white space-y-4">
+                    {/* Lambda Metrics */}
+                    <div>
+                      <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                        Lambda Metrics
+                        <Tooltip text="Performance stats from AWS Lambda functions" />
+                      </h5>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <MetricItem label="p50 Duration" value={`${advancedData.lambda_metrics.p50_duration}ms`} tooltip="50% of requests complete faster than this" />
+                        <MetricItem label="p90 Duration" value={`${advancedData.lambda_metrics.p90_duration}ms`} tooltip="90% of requests complete faster than this" />
+                        <MetricItem label="p99 Duration" value={`${advancedData.lambda_metrics.p99_duration}ms`} tooltip="99% of requests complete faster than this" />
+                        <MetricItem label="Invocations" value={advancedData.lambda_metrics.invocation_count} tooltip="Total function calls in the last hour" />
+                      </div>
+                    </div>
+
+                    {/* API Gateway Metrics */}
+                    <div>
+                      <h5 className="font-semibold text-gray-900 mb-2">API Gateway Metrics</h5>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <MetricItem label="API Latency" value={`${advancedData.api_gateway_metrics.latency}ms`} tooltip="Time from request to response" />
+                        <MetricItem label="Integration Latency" value={`${advancedData.api_gateway_metrics.integration_latency}ms`} tooltip="Time spent in backend services" />
+                      </div>
+                    </div>
+
+                    {/* Bedrock Metrics */}
+                    <div>
+                      <h5 className="font-semibold text-gray-900 mb-2">Bedrock Model Metrics</h5>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <MetricItem label="Inference Latency" value={`${advancedData.bedrock_metrics.inference_latency}ms`} tooltip="Time for AI model to generate response" />
+                        <MetricItem label="Request Size" value={`${advancedData.bedrock_metrics.request_size_kb}KB`} tooltip="Size of data sent to model" />
+                      </div>
+                    </div>
+
+                    {/* Token Usage */}
+                    <div>
+                      <h5 className="font-semibold text-gray-900 mb-2">Token Usage</h5>
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <MetricItem label="Input Tokens" value={advancedData.token_usage.input_tokens} tooltip="Tokens in your question" />
+                        <MetricItem label="Output Tokens" value={advancedData.token_usage.output_tokens} tooltip="Tokens in AI response" />
+                        <MetricItem label="Total" value={advancedData.token_usage.total_tokens} tooltip="Total tokens used" />
+                      </div>
+                    </div>
+
+                    {/* Error Logs */}
+                    {advancedData.error_logs && advancedData.error_logs.length > 0 && (
+                      <div>
+                        <h5 className="font-semibold text-gray-900 mb-2">Recent Errors</h5>
+                        <div className="bg-red-50 rounded-lg p-3 space-y-1">
+                          {advancedData.error_logs.map((log: string, idx: number) => (
+                            <p key={idx} className="text-xs text-red-700 font-mono">{log}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -229,6 +336,37 @@ function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; labe
         <span className="text-sm font-medium">{label}</span>
       </div>
       <div className="text-2xl font-bold">{value}</div>
+    </div>
+  )
+}
+
+function MetricItem({ label, value, tooltip }: { label: string; value: string | number; tooltip: string }) {
+  return (
+    <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+      <span className="text-gray-600 flex items-center gap-1">
+        {label}
+        <Tooltip text={tooltip} />
+      </span>
+      <span className="font-mono font-semibold">{value}</span>
+    </div>
+  )
+}
+
+function Tooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative">
+      <HelpCircle 
+        size={12} 
+        className="text-gray-400 cursor-help" 
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      />
+      {show && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10">
+          {text}
+        </div>
+      )}
     </div>
   )
 }
