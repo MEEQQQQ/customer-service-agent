@@ -110,29 +110,25 @@ export default function ChatContainer() {
       // Step 3: Get troubleshooting response
       setProcessingStep(`Step ${stepCount}/${totalSteps}: Generating solution...`)
       const troubleshootResult = await ApiClient.troubleshoot(sessionId, textContent)
-        
-        if (troubleshootResult.error) {
-          throw new Error(`Troubleshooting failed: ${troubleshootResult.error}`)
-        }
-
-        const response = troubleshootResult.data!
-        
-        const botResponse: Message = {
-          id: (Date.now() + 1).toString(),
-          content: response.response,
-          sender: 'bot',
-          timestamp: new Date(),
-          type: 'text',
-          audioResponse: response.audio_url,
-          sessionId: response.session_id,
-          actions: response.actions
-        }
-
-        setMessages(prev => [...prev, botResponse])
-      } else {
-        throw new Error('Failed to process uploaded files. Please try again.')
-      }
       
+      if (troubleshootResult.error) {
+        throw new Error(`Troubleshooting failed: ${troubleshootResult.error}`)
+      }
+
+      const response = troubleshootResult.data!
+      
+      const botResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        content: response.response,
+        sender: 'bot',
+        timestamp: new Date(),
+        type: 'text',
+        audioResponse: response.audio_url,
+        sessionId: response.session_id,
+        actions: response.actions
+      }
+
+      setMessages(prev => [...prev, botResponse])
       setProcessingStep('')
       
     } catch (error) {
