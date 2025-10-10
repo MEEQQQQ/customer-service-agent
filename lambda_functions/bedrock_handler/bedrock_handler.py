@@ -82,61 +82,58 @@ def lambda_handler(event, context):
         try:
             prompt = build_adaptive_prompt(transcript_data['text'], analysis_data, query_complexity, kb_context, ticket_id, is_first_message)
             
-            # Build messages with conversation history
-            messages = []
-            if not conversation_history:
-                messages.append({"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."})
-            messages.extend(conversation_history)
-            messages.append({"role": "user", "content": prompt})
+            # Check current message with guardrail first (without history)
+            guardrail_blocked = False
+            if GUARDRAIL_ID:
+                try:
+                    test_messages = [{"role": "user", "content": prompt}]
+                    test_request = json.dumps({
+                        "messages": test_messages,
+                        "max_completion_tokens": 10,
+                        "temperature": 0.2
+                    })
+                    bedrock_runtime.invoke_model(
+                        modelId="openai.gpt-oss-120b-1:0",
+                        body=test_request,
+                        guardrailIdentifier=GUARDRAIL_ID,
+                        guardrailVersion=GUARDRAIL_VERSION
+                    )
+                    print(f"✅ Guardrail check passed")
+                except ClientError as e:
+                    if 'guardrail' in str(e).lower():
+                        print(f"🛡️ Guardrail blocked current message: {e}")
+                        agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                        guardrail_blocked = True
+                    else:
+                        raise
+            
+            if not guardrail_blocked:
+                # Build messages with conversation history
+                messages = []
+                if not conversation_history:
+                    messages.append({"role": "system", "content": "You are a helpful assistant that is able to solve TV customer issues. Expected response should be concise and not ambiguous. Common issues faced are screen loading issues and overdue bills. Use Unifi TV as reference but do not mention it."})
+                messages.extend(conversation_history)
+                messages.append({"role": "user", "content": prompt})
 
-            max_tokens = 512 if query_complexity == 'simple' else 1024
-            native_request = {
-                "messages": messages,
-                "max_completion_tokens": max_tokens,
-                "temperature": 0.2,
-            }
+                max_tokens = 512 if query_complexity == 'simple' else 1024
+                native_request = {
+                    "messages": messages,
+                    "max_completion_tokens": max_tokens,
+                    "temperature": 0.2,
+                }
 
-            request = json.dumps(native_request)
+                request = json.dumps(native_request)
 
-            try:
-                model_id = "openai.gpt-oss-120b-1:0"
-                
-                # Apply Guardrail if configured
-                invoke_params = {'modelId': model_id, 'body': request}
-                if GUARDRAIL_ID:
-                    invoke_params['guardrailIdentifier'] = GUARDRAIL_ID
-                    invoke_params['guardrailVersion'] = GUARDRAIL_VERSION
-                    print(f"Using Guardrail: {GUARDRAIL_ID} v{GUARDRAIL_VERSION}")
-                
-                response = bedrock_runtime.invoke_model(**invoke_params)
-                guardrail_blocked = False
-            except ClientError as e:
-                error_code = e.response.get('Error', {}).get('Code')
-                
-                if error_code == 'ValidationException' and 'guardrail' in str(e).lower():
-                    print(f"🛡️ Guardrail blocked request: {e}")
-                    # Use guardrail's configured blocked message
-                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
-                    guardrail_blocked = True
-                else:
+                try:
+                    model_id = "openai.gpt-oss-120b-1:0"
+                    response = bedrock_runtime.invoke_model(modelId=model_id, body=request)
+                except Exception as e:
                     print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
                     raise
-            except Exception as e:
-                print(f"ERROR: Can't invoke '{model_id}'. Reason: {e}")
-                raise
 
-            if not guardrail_blocked:
                 model_response = json.loads(response["body"].read())
-
-                # ✅ Extract only the model-generated text
                 agent_response = model_response["choices"][0]["message"]["content"]
                 agent_response = re.sub(r"<reasoning>.*?</reasoning>", "", agent_response, flags=re.DOTALL).strip()
-                
-                # Log if Guardrail was triggered
-                if 'amazon-bedrock-guardrailAction' in response.get('ResponseMetadata', {}).get('HTTPHeaders', {}):
-                    print(f"⚠️ Guardrail action taken: {response['ResponseMetadata']['HTTPHeaders']['amazon-bedrock-guardrailAction']}")
-                
-                # Save conversation to history only if not blocked
                 save_conversation_history(session_id, prompt, agent_response)
             
         except Exception as e:
@@ -430,8 +427,9 @@ def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_i
     
     # Detect if this is an actual issue or casual chat
     query_lower = query.lower()
-    issue_keywords = ['error', 'not working', 'problem', 'issue', 'broken', 'fix', 'help', 'no signal', 
-                      'black screen', 'no service', 'cant', "can't", 'unable', 'failed', 'wrong']
+    issue_keywords = ['error', 'not working', 'problem', 'issue', 'broken', 'fix', 'no signal', 
+                      'black screen', 'no service', 'cant', "can't", 'unable', 'failed', 'wrong',
+                      'tv error', 'screen error', 'connection', 'buffering', 'freezing', 'slow']
     casual_keywords = ['hello', 'hi', 'hey', 'thanks', 'thank you', 'good', 'great', 'okay', 'ok']
     
     is_issue = any(keyword in query_lower for keyword in issue_keywords) or has_visual_context
@@ -460,9 +458,10 @@ Context:
 - Screen Text: {analysis_data.get('extracted_text', [])}
 
 Instructions:
-1. This is a technical issue - mention ticket number once (e.g., "I've created ticket {ticket_id} to help you")
+1. IMPORTANT: This is a technical issue - ALWAYS mention the ticket number in your response (e.g., "I've created ticket {ticket_id} to track this issue")
 2. Address the specific issue mentioned
-3. Provide troubleshooting steps"""
+3. Provide troubleshooting steps
+4. Be professional and helpful"""
     else:
         # Follow-up message
         if is_casual:
@@ -472,6 +471,22 @@ Instructions:
 1. Respond naturally to the message
 2. Be conversational and friendly
 3. DO NOT mention ticket numbers for casual responses"""
+        elif is_issue:
+            # Follow-up with technical issue - mention ticket
+            base_prompt = f"""Customer Query: {query}
+
+Ticket: {ticket_id}
+
+Context:
+- TV Errors: {tv_errors if tv_errors else 'None'}
+- Visual Info: {[l['Name'] for l in analysis_data.get('labels', [])]}
+- Screen Text: {analysis_data.get('extracted_text', [])}
+
+Instructions:
+1. IMPORTANT: Customer mentioned a technical issue - ALWAYS reference the ticket number (e.g., "I'm tracking this under ticket {ticket_id}" or "Let me help with ticket {ticket_id}")
+2. Address the specific problem mentioned
+3. Provide clear troubleshooting steps
+4. Be conversational but professional"""
         elif has_visual_context:
             base_prompt = f"""Customer Query: {query}
 
