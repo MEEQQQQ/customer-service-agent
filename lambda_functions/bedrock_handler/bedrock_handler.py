@@ -304,7 +304,7 @@ def save_conversation_history(session_id, user_message, assistant_message):
     
     # Add system message only on first interaction
     if not history:
-        history.append({"role": "system", "content": "You are a helpful TV customer service agent. Respond naturally to each question. If the topic changes, follow the new topic. Be conversational and concise. Don't repeat ticket numbers in follow-ups."})
+        history.append({"role": "system", "content": "You are a helpful TV customer service agent. Respond naturally and conversationally. NEVER mention ticket numbers unless the user specifically asks about their ticket. Focus on solving the problem, not referencing tickets."})
     
     # Extract just the user query without all the context
     clean_user_message = user_message.split('Customer Query:')[1].split('\n')[0].strip() if 'Customer Query:' in user_message else user_message
@@ -460,7 +460,7 @@ Instructions:
 3. Be friendly and conversational
 4. DO NOT mention ticket numbers for casual greetings"""
         else:
-            # Actual issue - mention ticket
+            # Actual issue - mention ticket ONCE
             base_prompt = f"""Customer Query: {query}
 
 Ticket: {ticket_id}
@@ -471,10 +471,10 @@ Context:
 - Screen Text: {analysis_data.get('extracted_text', [])}
 
 Instructions:
-1. IMPORTANT: This is a technical issue - ALWAYS mention the ticket number in your response (e.g., "I've created ticket {ticket_id} to track this issue")
-2. Address the specific issue mentioned
-3. Provide troubleshooting steps
-4. Be professional and helpful"""
+1. CRITICAL: Mention ticket number ONCE at the start (e.g., "I've created ticket {ticket_id} for this.")
+2. Then focus entirely on solving the problem - provide clear troubleshooting steps
+3. Be concise and helpful
+4. Do NOT repeat the ticket number again"""
     else:
         # Follow-up message
         if is_casual:
@@ -485,10 +485,8 @@ Instructions:
 2. Be conversational and friendly
 3. DO NOT mention ticket numbers for casual responses"""
         elif is_issue:
-            # Follow-up with technical issue - mention ticket
+            # Follow-up with technical issue - NO ticket mention
             base_prompt = f"""Customer Query: {query}
-
-Ticket: {ticket_id}
 
 Context:
 - TV Errors: {tv_errors if tv_errors else 'None'}
@@ -496,10 +494,10 @@ Context:
 - Screen Text: {analysis_data.get('extracted_text', [])}
 
 Instructions:
-1. IMPORTANT: Customer mentioned a technical issue - ALWAYS reference the ticket number (e.g., "I'm tracking this under ticket {ticket_id}" or "Let me help with ticket {ticket_id}")
-2. Address the specific problem mentioned
-3. Provide clear troubleshooting steps
-4. Be conversational but professional"""
+1. CRITICAL: Do NOT mention the ticket number - user already knows it
+2. Focus on answering their question directly
+3. Provide clear, actionable troubleshooting steps
+4. Be conversational and helpful"""
         elif has_visual_context:
             base_prompt = f"""Customer Query: {query}
 
