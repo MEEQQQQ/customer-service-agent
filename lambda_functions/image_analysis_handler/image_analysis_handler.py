@@ -83,7 +83,7 @@ def lambda_handler(event, context):
         analysis_results = {}
         
         # TV Error Detection using specific model
-        tv_error_arn = "arn:aws:rekognition:ap-southeast-1:190403256083:project/tv-error-detection-auto/version/v1/1759937488420"
+        tv_error_arn = "arn:aws:rekognition:us-east-1:190403256083:project/tv-error-detection/version/v1/1760113338518"
         try:
             tv_error_response = rekognition_client.detect_custom_labels(
                 ProjectVersionArn=tv_error_arn,
@@ -96,7 +96,16 @@ def lambda_handler(event, context):
                 MinConfidence=50
             )
             analysis_results['tv_error_detection'] = tv_error_response.get('CustomLabels', [])
-            logger.info(f"TV error detection completed for session: {session_id}")
+            logger.info(f"TV error detection completed for session: {session_id}, found {len(analysis_results['tv_error_detection'])} labels")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'ResourceNotReadyException':
+                logger.warning(f"TV error detection model not running: {tv_error_arn}")
+            elif error_code == 'InvalidParameterException':
+                logger.error(f"Invalid TV error detection model ARN: {tv_error_arn}")
+            else:
+                logger.error(f"TV error detection failed with {error_code}: {e}")
+            analysis_results['tv_error_detection'] = []
         except Exception as e:
             logger.error(f"TV error detection failed: {e}")
             analysis_results['tv_error_detection'] = []
