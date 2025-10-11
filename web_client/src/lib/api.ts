@@ -79,8 +79,14 @@ export class ApiClient {
     return this.makeRequest('/execute-action', { method: 'POST', body: JSON.stringify({ session_id: sessionId, action }) })
   }
 
-  static async submitFeedback(sessionId: string, rating: 'positive' | 'negative', feedbackText: string = '', userType: string = 'user'): Promise<ApiResponse<{message: string}>> {
-    return this.makeRequest('/feedback', { method: 'POST', body: JSON.stringify({ session_id: sessionId, rating, feedback_text: feedbackText, user_type: userType }) })
+  static async submitFeedback(sessionId: string, rating: 'positive' | 'negative', feedbackText: string = '', messageId?: string): Promise<ApiResponse<{message: string}>> {
+    return this.makeRequest('/feedback', { method: 'POST', body: JSON.stringify({ 
+      session_id: sessionId, 
+      vote_type: rating, 
+      feedback_text: feedbackText,
+      message_id: messageId || `msg_${Date.now()}`,
+      username: 'user'
+    }) })
   }
 
   private static fileToBase64(file: File): Promise<string> {
