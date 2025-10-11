@@ -157,6 +157,31 @@ class ApiStack(Stack):
         # Grant DynamoDB permissions to upload_handler and bedrock_handler
         ticket_table.grant_read_write_data(upload_handler)
         ticket_table.grant_read_write_data(bedrock_handler)
+        
+        # Grant DynamoDB permissions for feedback table
+        # Note: feedback_handler needs PutItem, session_recap_handler needs Scan
+        from aws_cdk import aws_iam as iam
+        
+        feedback_handler.add_to_role_policy(iam.PolicyStatement(
+            actions=['dynamodb:PutItem', 'dynamodb:GetItem'],
+            resources=[f'arn:aws:dynamodb:{self.region}:{self.account}:table/performance-thumbsup']
+        ))
+        
+        session_recap_handler.add_to_role_policy(iam.PolicyStatement(
+            actions=['dynamodb:Scan', 'dynamodb:Query'],
+            resources=[f'arn:aws:dynamodb:{self.region}:{self.account}:table/performance-thumbsup']
+        ))
+        
+        # Grant CloudWatch permissions for metrics and logs
+        session_recap_handler.add_to_role_policy(iam.PolicyStatement(
+            actions=[
+                'cloudwatch:GetMetricStatistics',
+                'cloudwatch:ListMetrics',
+                'logs:FilterLogEvents',
+                'logs:DescribeLogStreams'
+            ],
+            resources=['*']
+        ))
 
         # API Gateway
         api = apigateway.RestApi(

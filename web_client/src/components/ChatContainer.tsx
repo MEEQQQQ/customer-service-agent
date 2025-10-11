@@ -287,7 +287,7 @@ export default function ChatContainer() {
               onFeedback={async (messageId, rating) => {
                 setMessageFeedback(prev => ({ ...prev, [messageId]: rating }))
                 if (currentSessionId) {
-                  await ApiClient.submitFeedback(currentSessionId, rating, '', 'user')
+                  await ApiClient.submitFeedback(currentSessionId, rating, '', messageId)
                 }
               }}
             />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ThumbsUp, ThumbsDown, TrendingUp, Clock, CheckCircle, Zap, MessageSquare, Send, ChevronDown, ChevronUp, Code, HelpCircle } from 'lucide-react'
+import { ThumbsUp, ThumbsDown, TrendingUp, Clock, CheckCircle, Zap, MessageSquare, Send, ChevronDown, ChevronUp, Code, HelpCircle, BarChart3 } from 'lucide-react'
 
 interface SessionRecapProps {
   sessionId: string
@@ -16,11 +16,13 @@ interface RecapData {
     model_confidence: number
     system_uptime: number
     satisfaction_rate: number
+    estimated_tokens: number
   }
   feedback: {
     positive: number
     negative: number
     total: number
+    messages_rated: number
     comments: string[]
   }
 }
@@ -29,8 +31,8 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
   const [recapData, setRecapData] = useState<RecapData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showFeedbackForm, setShowFeedbackForm] = useState(true)
-  const [selectedRating, setSelectedRating] = useState<'positive' | 'negative' | null>(null)
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false)
+  const [starRating, setStarRating] = useState(5)
   const [feedbackText, setFeedbackText] = useState('')
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -38,11 +40,11 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
   const [loadingAdvanced, setLoadingAdvanced] = useState(false)
 
   const handleSubmitFeedback = async () => {
-    if (!selectedRating) return
-    
     setLoading(true)
     try {
-      await onSubmitFeedback(selectedRating, feedbackText)
+      // Convert star rating to positive/negative (4-5 stars = positive, 1-3 stars = negative)
+      const rating = starRating >= 4 ? 'positive' : 'negative'
+      await onSubmitFeedback(rating, feedbackText)
       setFeedbackSubmitted(true)
       setShowFeedbackForm(false)
       await fetchRecap()
@@ -51,6 +53,11 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
     } finally {
       setLoading(false)
     }
+  }
+  
+  const handleViewMetrics = async () => {
+    setShowFeedbackForm(false)
+    await fetchRecap()
   }
 
   const fetchRecap = async (includeAdvanced = false) => {
@@ -112,35 +119,59 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
         </div>
 
         <div className="p-6">
-          {showFeedbackForm && !feedbackSubmitted && (
+          {!recapData && (
             <div className="space-y-4 mb-6">
-              <h3 className="text-lg font-semibold text-gray-900">How was your experience?</h3>
+              <div className="text-center">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Session Complete!</h3>
+                <p className="text-sm text-gray-600">View your session metrics or leave optional feedback</p>
+              </div>
               
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 <button
-                  onClick={() => setSelectedRating('positive')}
-                  className={`flex-1 py-4 px-4 rounded-xl font-medium transition-all ${
-                    selectedRating === 'positive'
-                      ? 'bg-green-100 text-green-700 border-2 border-green-500'
-                      : 'bg-gray-50 text-gray-700 border-2 border-gray-200 hover:border-green-300'
-                  }`}
+                  onClick={handleViewMetrics}
+                  className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2"
                 >
-                  <ThumbsUp size={32} className="mx-auto mb-2" />
-                  Satisfied
+                  <BarChart3 size={18} />
+                  View Metrics
                 </button>
                 
                 <button
-                  onClick={() => setSelectedRating('negative')}
-                  className={`flex-1 py-4 px-4 rounded-xl font-medium transition-all ${
-                    selectedRating === 'negative'
-                      ? 'bg-red-100 text-red-700 border-2 border-red-500'
-                      : 'bg-gray-50 text-gray-700 border-2 border-gray-200 hover:border-red-300'
-                  }`}
+                  onClick={() => setShowFeedbackForm(true)}
+                  className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
                 >
-                  <ThumbsDown size={32} className="mx-auto mb-2" />
-                  Not Satisfied
+                  <MessageSquare size={18} />
+                  Leave Feedback
                 </button>
               </div>
+            </div>
+          )}
+          
+          {showFeedbackForm && !feedbackSubmitted && !recapData && (
+            <div className="space-y-4 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Rate Your Experience (Optional)</h3>
+              
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setStarRating(star)}
+                    className="transition-transform hover:scale-110"
+                  >
+                    <svg
+                      className={`w-10 h-10 ${
+                        star <= starRating ? 'text-yellow-400 fill-current' : 'text-gray-300'
+                      }`}
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                    >
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-sm text-gray-600">{starRating} out of 5 stars</p>
 
               <div className="relative">
                 <MessageSquare size={18} className="absolute left-3 top-3 text-gray-400" />
@@ -153,14 +184,22 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
                 />
               </div>
               
-              <button
-                onClick={handleSubmitFeedback}
-                disabled={!selectedRating || loading}
-                className="w-full py-3 px-4 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Send size={18} />
-                {loading ? 'Submitting...' : 'Submit & View Metrics'}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFeedbackForm(false)}
+                  className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={handleSubmitFeedback}
+                  disabled={loading}
+                  className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Send size={18} />
+                  {loading ? 'Submitting...' : 'Submit Feedback'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -185,6 +224,11 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
 
           {recapData && (
             <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
+                <p className="text-xs text-blue-700">
+                  📊 Metrics below are calculated from real CloudWatch data over the last 24 hours of system activity.
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <MetricCard
                   icon={<Clock size={20} />}
@@ -211,6 +255,17 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
                   color={getColor(recapData.metrics.system_uptime, { good: 99, moderate: 95 })}
                 />
               </div>
+              
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={18} className="text-purple-600" />
+                    <span className="text-sm font-medium text-gray-700">Estimated Tokens Used</span>
+                  </div>
+                  <span className="text-2xl font-bold text-purple-600">{recapData.metrics.estimated_tokens}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Average tokens per conversation</p>
+              </div>
 
               <div className="bg-gradient-to-br from-primary-50 to-secondary-50 rounded-xl p-6 border border-primary-100">
                 <div className="flex items-center justify-between mb-4">
@@ -227,6 +282,10 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
                   <div className="flex items-center gap-2">
                     <ThumbsDown size={16} className="text-red-600" />
                     <span className="font-medium">{recapData.feedback.negative} negative</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <MessageSquare size={16} className="text-blue-600" />
+                    <span className="font-medium">{recapData.feedback.messages_rated} messages rated</span>
                   </div>
                 </div>
               </div>
@@ -264,59 +323,85 @@ export default function SessionRecap({ sessionId, onClose, onSubmitFeedback }: S
 
                 {showAdvanced && advancedData && (
                   <div className="p-4 bg-white space-y-4">
-                    {/* Lambda Metrics */}
-                    <div>
-                      <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                        Lambda Metrics
-                        <Tooltip text="Performance stats from AWS Lambda functions" />
-                      </h5>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <MetricItem label="p50 Duration" value={`${advancedData.lambda_metrics.p50_duration}ms`} tooltip="50% of requests complete faster than this" />
-                        <MetricItem label="p90 Duration" value={`${advancedData.lambda_metrics.p90_duration}ms`} tooltip="90% of requests complete faster than this" />
-                        <MetricItem label="p99 Duration" value={`${advancedData.lambda_metrics.p99_duration}ms`} tooltip="99% of requests complete faster than this" />
-                        <MetricItem label="Invocations" value={advancedData.lambda_metrics.invocation_count} tooltip="Total function calls in the last hour" />
-                      </div>
-                    </div>
-
-                    {/* API Gateway Metrics */}
-                    <div>
-                      <h5 className="font-semibold text-gray-900 mb-2">API Gateway Metrics</h5>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <MetricItem label="API Latency" value={`${advancedData.api_gateway_metrics.latency}ms`} tooltip="Time from request to response" />
-                        <MetricItem label="Integration Latency" value={`${advancedData.api_gateway_metrics.integration_latency}ms`} tooltip="Time spent in backend services" />
-                      </div>
-                    </div>
-
-                    {/* Bedrock Metrics */}
-                    <div>
-                      <h5 className="font-semibold text-gray-900 mb-2">Bedrock Model Metrics</h5>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <MetricItem label="Inference Latency" value={`${advancedData.bedrock_metrics.inference_latency}ms`} tooltip="Time for AI model to generate response" />
-                        <MetricItem label="Request Size" value={`${advancedData.bedrock_metrics.request_size_kb}KB`} tooltip="Size of data sent to model" />
-                      </div>
-                    </div>
-
-                    {/* Token Usage */}
-                    <div>
-                      <h5 className="font-semibold text-gray-900 mb-2">Token Usage</h5>
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <MetricItem label="Input Tokens" value={advancedData.token_usage.input_tokens} tooltip="Tokens in your question" />
-                        <MetricItem label="Output Tokens" value={advancedData.token_usage.output_tokens} tooltip="Tokens in AI response" />
-                        <MetricItem label="Total" value={advancedData.token_usage.total_tokens} tooltip="Total tokens used" />
-                      </div>
-                    </div>
-
-                    {/* Error Logs */}
-                    {advancedData.error_logs && advancedData.error_logs.length > 0 && (
+                    {!advancedData && (
+                      <p className="text-sm text-gray-500 text-center py-4">No advanced metrics available for this session</p>
+                    )}
+                    
+                    {/* Lambda Metrics - Real CloudWatch Data */}
+                    {advancedData?.lambda_metrics && (
                       <div>
-                        <h5 className="font-semibold text-gray-900 mb-2">Recent Errors</h5>
-                        <div className="bg-red-50 rounded-lg p-3 space-y-1">
+                        <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          Lambda Metrics (Last Hour)
+                          <Tooltip text="Real-time performance stats from AWS Lambda" />
+                        </h5>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {advancedData.lambda_metrics.invocation_count !== undefined && (
+                            <MetricItem label="Invocations" value={advancedData.lambda_metrics.invocation_count} tooltip="Total function calls in the last hour" />
+                          )}
+                          {advancedData.lambda_metrics.error_count !== undefined && (
+                            <MetricItem label="Errors" value={advancedData.lambda_metrics.error_count} tooltip="Failed function executions" />
+                          )}
+                          {advancedData.lambda_metrics.avg_duration_ms !== undefined && (
+                            <MetricItem label="Avg Duration" value={`${advancedData.lambda_metrics.avg_duration_ms}ms`} tooltip="Average execution time" />
+                          )}
+                          {advancedData.lambda_metrics.max_duration_ms !== undefined && (
+                            <MetricItem label="Max Duration" value={`${advancedData.lambda_metrics.max_duration_ms}ms`} tooltip="Longest execution time" />
+                          )}
+                          {advancedData.lambda_metrics.min_duration_ms !== undefined && (
+                            <MetricItem label="Min Duration" value={`${advancedData.lambda_metrics.min_duration_ms}ms`} tooltip="Fastest execution time" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* API Gateway Metrics - Real CloudWatch Data */}
+                    {advancedData?.api_gateway_metrics && (
+                      <div>
+                        <h5 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          API Gateway Metrics (Last Hour)
+                          <Tooltip text="Real-time API performance data" />
+                        </h5>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          {advancedData.api_gateway_metrics.request_count !== undefined && (
+                            <MetricItem label="Total Requests" value={advancedData.api_gateway_metrics.request_count} tooltip="API calls in the last hour" />
+                          )}
+                          {advancedData.api_gateway_metrics.avg_latency_ms !== undefined && (
+                            <MetricItem label="Avg Latency" value={`${advancedData.api_gateway_metrics.avg_latency_ms}ms`} tooltip="Average response time" />
+                          )}
+                          {advancedData.api_gateway_metrics.max_latency_ms !== undefined && (
+                            <MetricItem label="Max Latency" value={`${advancedData.api_gateway_metrics.max_latency_ms}ms`} tooltip="Slowest response time" />
+                          )}
+                          {advancedData.api_gateway_metrics['4xx_errors'] !== undefined && (
+                            <MetricItem label="4xx Errors" value={advancedData.api_gateway_metrics['4xx_errors']} tooltip="Client errors" />
+                          )}
+                          {advancedData.api_gateway_metrics['5xx_errors'] !== undefined && (
+                            <MetricItem label="5xx Errors" value={advancedData.api_gateway_metrics['5xx_errors']} tooltip="Server errors" />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error Logs - Real CloudWatch Logs */}
+                    {advancedData?.error_logs && advancedData.error_logs.length > 0 && (
+                      <div>
+                        <h5 className="font-semibold text-gray-900 mb-2">Recent Error Logs</h5>
+                        <div className="bg-red-50 rounded-lg p-3 space-y-1 max-h-48 overflow-y-auto">
                           {advancedData.error_logs.map((log: string, idx: number) => (
-                            <p key={idx} className="text-xs text-red-700 font-mono">{log}</p>
+                            <p key={idx} className="text-xs text-red-700 font-mono break-all">{log}</p>
                           ))}
                         </div>
                       </div>
                     )}
+                    
+                    {advancedData && !advancedData.lambda_metrics && !advancedData.api_gateway_metrics && !advancedData.error_logs && (
+                      <p className="text-sm text-gray-500 text-center py-4">No metrics data available for the last hour</p>
+                    )}
+                  </div>
+                )}
+                
+                {showAdvanced && !advancedData && !loadingAdvanced && (
+                  <div className="p-4 bg-white">
+                    <p className="text-sm text-gray-500 text-center py-4">Unable to load advanced metrics</p>
                   </div>
                 )}
               </div>
