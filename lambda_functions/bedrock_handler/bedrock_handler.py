@@ -12,7 +12,7 @@ polly_client = boto3.client('polly')
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 BUCKET_NAME = os.environ['STORAGE_BUCKET']
-KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', 'VARVMASHNX')
+KNOWLEDGE_BASE_ID = os.environ.get('KNOWLEDGE_BASE_ID', '5661CRUXH2')
 TICKET_TABLE_NAME = os.environ.get('TICKET_TABLE_NAME', 'ticket_log')
 GUARDRAIL_ID = os.environ.get('GUARDRAIL_ID', '')
 GUARDRAIL_VERSION = os.environ.get('GUARDRAIL_VERSION', 'DRAFT')
@@ -633,28 +633,22 @@ def format_markdown_response(text):
     return result.strip()
 
 def extract_actions(response_text):
-    """Extract actionable items from the response"""
+    """Extract actionable items from the response - only when agent explicitly commits to action"""
     actions = []
     text_lower = response_text.lower()
     
-    # Check for restart keywords
-    if any(word in text_lower for word in ['restart', 'reboot', 'power cycle']):
-        actions.append('restart_stb')
+    # Only trigger if agent explicitly says "I'll" or "I will" before the action
+    action_phrases = [
+        (r"i'?ll\s+(restart|reboot)", 'restart_stb'),
+        (r"i'?ll\s+reprovision", 'reprovision_service'),
+        (r"i'?ll\s+check\s+your\s+subscription", 'check_subscription'),
+        (r"i'?ll\s+refresh\s+your\s+billing", 'refresh_account_billing'),
+        (r"i'?ll\s+check\s+your\s+billing", 'check_account_biling')
+    ]
     
-    # Check for reprovision keywords
-    if any(word in text_lower for word in ['reprovision', 're-provision', 'provision']):
-        actions.append('reprovision_service')
-    
-    # Check for subscription keywords
-    if any(word in text_lower for word in ['subscription', 'package', 'plan']):
-        actions.append('check_subscription')
-    
-    # Check for billing keywords
-    if any(word in text_lower for word in ['billing', 'payment', 'balance', 'outstanding']):
-        if 'refresh' in text_lower:
-            actions.append('refresh_account_billing')
-        else:
-            actions.append('check_account_biling')
+    for pattern, action in action_phrases:
+        if re.search(pattern, text_lower):
+            actions.append(action)
     
     return actions
 
