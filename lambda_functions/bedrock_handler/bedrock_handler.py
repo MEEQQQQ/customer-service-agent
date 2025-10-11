@@ -86,7 +86,7 @@ def lambda_handler(event, context):
         for word in profanity_words:
             if word in text_lower:
                 print(f"🛡️ Client-side filter blocked profanity: {word}")
-                agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                agent_response = "I totally get that tech issues can be frustrating! Let's keep things professional though - I'm here to help fix your TV problem. What's going on with your service?"
                 guardrail_blocked = True
                 break
         
@@ -94,7 +94,7 @@ def lambda_handler(event, context):
             for pattern in pii_patterns:
                 if re.search(pattern, transcript_data['text']):
                     print(f"🛡️ Client-side filter blocked PII pattern")
-                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                    agent_response = "Quick heads up - looks like you shared some sensitive info like a card number. For your security, please don't include those details here. Just describe your TV issue and I'll help you out! 👍"
                     guardrail_blocked = True
                     break
         
@@ -120,7 +120,7 @@ def lambda_handler(event, context):
                 print(f"Guardrail check error - Code: {error_code}, Message: {str(e)}")
                 if error_code == 'ValidationException' or 'guardrail' in str(e).lower():
                     print(f"🛡️ Guardrail BLOCKED message")
-                    agent_response = "I'm here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I'll be happy to assist you with your TV service needs."
+                    agent_response = "Hey, I noticed your message might contain some sensitive info like card numbers or personal details. For your security, could you rephrase that without including those? I'm here to help with your TV issue! 😊"
                     guardrail_blocked = True
                 else:
                     print(f"Non-guardrail error, re-raising")
@@ -279,6 +279,18 @@ def lambda_handler(event, context):
                     print(f"Action {action} executed: {result}")
                 except Exception as e:
                     print(f"Failed to execute action {action}: {e}")
+            
+            # Append execution results to agent response
+            if action_results:
+                formatted_response += "\n\n---\n\n"
+                for action_result in action_results:
+                    result = action_result['result']
+                    if result['success']:
+                        formatted_response += f"✅ **Action Completed**: {result['message']}\n"
+                        if 'details' in result and 'estimated_completion' in result['details']:
+                            formatted_response += f"⏱️ Estimated time: {result['details']['estimated_completion']}\n"
+                    else:
+                        formatted_response += f"❌ **Action Failed**: {result['message']}\n"
         
         # Store troubleshooting response
         troubleshooting_data = {
