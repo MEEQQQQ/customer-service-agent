@@ -75,7 +75,12 @@ def lambda_handler(event, context):
         
         # Simple client-side profanity check
         profanity_words = ['fuck', 'shit', 'bitch', 'asshole', 'damn', 'bastard', 'cunt', 'dick']
-        pii_patterns = [r'\d{13,19}', r'\d{3}-\d{2}-\d{4}', r'\d{9,12}']  # Credit card, SSN, bank account
+        # Only block actual PII, not serial numbers (serial numbers usually have letters)
+        pii_patterns = [
+            r'\b\d{16}\b',  # Credit card (16 digits only)
+            r'\b\d{3}-\d{2}-\d{4}\b',  # SSN format
+            r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'  # Credit card with spaces/dashes
+        ]
         
         text_lower = transcript_data['text'].lower()
         for word in profanity_words:
@@ -258,11 +263,29 @@ def lambda_handler(event, context):
             print(f"Failed to generate presigned URL: {str(e)}")
             audio_url = f"https://{BUCKET_NAME}.s3.amazonaws.com/{audio_key}"
         
+        # Extract and auto-execute actions
+        detected_actions = extract_actions(agent_response)
+        action_results = []
+        
+        if detected_actions:
+            print(f"Auto-executing detected actions: {detected_actions}")
+            for action in detected_actions:
+                try:
+                    result = execute_action_internal(action, session_id)
+                    action_results.append({
+                        'action': action,
+                        'result': result
+                    })
+                    print(f"Action {action} executed: {result}")
+                except Exception as e:
+                    print(f"Failed to execute action {action}: {e}")
+        
         # Store troubleshooting response
         troubleshooting_data = {
             'response_text': formatted_response,
             'audio_key': audio_key,
-            'recommended_actions': extract_actions(agent_response)
+            'recommended_actions': detected_actions,
+            'executed_actions': action_results
         }
         
         s3_client.put_object(
@@ -459,6 +482,16 @@ def build_adaptive_prompt(query, analysis_data, complexity, kb_context, ticket_i
     tv_errors = [l['Name'] for l in analysis_data.get('tv_error_detection', [])]
     has_visual_context = tv_errors or analysis_data.get('labels') or analysis_data.get('extracted_text')
     
+    # Define available tools
+    tools_description = """\n\nAvailable Actions (MUST use exact keywords):
+- restart_stb: Say "I'll restart your set-top box" when user asks to restart/reboot
+- reprovision_service: Say "I'll reprovision your service" for service errors
+- check_subscription: Say "I'll check your subscription" for access issues
+- refresh_account_billing: Say "I'll refresh your billing" for payment issues
+- check_account_biling: Say "I'll check your billing" for balance queries
+
+IMPORTANT: When user asks for these actions, you MUST include the keyword (restart/reprovision/subscription/billing) in your response to trigger execution."""
+    
     # Detect if this is an actual issue or casual chat
     query_lower = query.lower()
     issue_keywords = ['error', 'not working', 'problem', 'issue', 'broken', 'fix', 'no signal', 
@@ -542,6 +575,10 @@ Instructions:
     if kb_context and is_issue:
         base_prompt += f"\n\nKnowledge: {kb_context}"
     
+    # Add tools description for technical issues
+    if is_issue:
+        base_prompt += tools_description
+    
     if complexity == 'simple':
         base_prompt += "\n\nKeep response concise (2-3 sentences)."
     else:
@@ -586,10 +623,59 @@ def format_markdown_response(text):
 def extract_actions(response_text):
     """Extract actionable items from the response"""
     actions = []
-    if 'restart' in response_text.lower():
+    text_lower = response_text.lower()
+    
+    # Check for restart keywords
+    if any(word in text_lower for word in ['restart', 'reboot', 'power cycle']):
         actions.append('restart_stb')
-    if 'provision' in response_text.lower():
+    
+    # Check for reprovision keywords
+    if any(word in text_lower for word in ['reprovision', 're-provision', 'provision']):
         actions.append('reprovision_service')
-    if 'subscription' in response_text.lower():
+    
+    # Check for subscription keywords
+    if any(word in text_lower for word in ['subscription', 'package', 'plan']):
         actions.append('check_subscription')
+    
+    # Check for billing keywords
+    if any(word in text_lower for word in ['billing', 'payment', 'balance', 'outstanding']):
+        if 'refresh' in text_lower:
+            actions.append('refresh_account_billing')
+        else:
+            actions.append('check_account_biling')
+    
     return actions
+
+def execute_action_internal(action, session_id):
+    """Execute action internally (mock implementation)"""
+    if action == 'restart_stb':
+        return {
+            'success': True,
+            'message': 'Set-top box restart command sent successfully',
+            'details': {'estimated_completion': '2-3 minutes'}
+        }
+    elif action == 'reprovision_service':
+        return {
+            'success': True,
+            'message': 'Service reprovisioning initiated successfully',
+            'details': {'estimated_completion': '5-10 minutes'}
+        }
+    elif action == 'check_subscription':
+        return {
+            'success': True,
+            'message': 'Subscription status: Active',
+            'details': {'status': 'active', 'package': 'TV Ultimate'}
+        }
+    elif action == 'refresh_account_billing':
+        return {
+            'success': True,
+            'message': 'Billing information refreshed',
+            'details': {'next_billing_date': '2024-06-01'}
+        }
+    elif action == 'check_account_biling':
+        return {
+            'success': True,
+            'message': 'Outstanding balance: RM 200.00',
+            'details': {'outstanding_balance': 'RM 200.00', 'due_date': '2024-06-01'}
+        }
+    return {'success': False, 'message': 'Unknown action'}
