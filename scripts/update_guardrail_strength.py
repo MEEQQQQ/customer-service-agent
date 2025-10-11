@@ -46,8 +46,8 @@ response = bedrock.update_guardrail(
             {'type': 'PROFANITY'}
         ]
     },
-    blockedInputMessaging='I\'m here to provide helpful and respectful customer service. I noticed your message contains either sensitive personal information (like credit card numbers, SSN, or bank details) or inappropriate content. Please rephrase your message professionally, and I\'ll be happy to assist you with your TV service needs.',
-    blockedOutputsMessaging='I apologize, but I cannot provide that response. Let me help you with your TV service issue in a professional manner.'
+    blockedInputMessaging='Hey! I noticed your message might have some sensitive info or inappropriate content. For your security and to keep things professional, could you rephrase that? I\'m here to help with your TV issue! 😊',
+    blockedOutputsMessaging='Oops, I can\'t share that info. But I\'m happy to help with your TV service in another way - what do you need?'
 )
 
 print(f"Guardrail updated: {response['guardrailId']}")
