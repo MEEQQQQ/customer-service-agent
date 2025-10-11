@@ -192,7 +192,7 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Bedrock AI failed: {e}")
             # AI system error - escalate to human
-            agent_response = f"I'm experiencing some technical difficulties on my end. Let me connect you with one of our human agents who can help you right away with ticket {ticket_id}. They'll have full context of your issue and will reach out shortly. Is there anything else I can note for them?"
+            agent_response = f"I'm experiencing some technical difficulties on my end. Let me connect you with one of our Codezilla staff who can help you right away with ticket {ticket_id}. They'll have full context of your issue and will reach out shortly. Is there anything else I can note for them?"
             guardrail_blocked = True  # Skip further processing
         
         # Generate TTS audio with better error handling
@@ -665,7 +665,8 @@ def should_escalate_to_human(agent_response, user_query, conversation_history):
         "legal", "lawsuit", "lawyer", "attorney", "court",
         "refund", "compensation", "cancel contract", "terminate service",
         "speak to manager", "talk to supervisor", "human agent",
-        "escalate", "complaint", "formal complaint"
+        "escalate", "complaint", "formal complaint", "talk to staff", "talk to Codezilla staff",
+        "technical support", "staff"
     ]
     
     # Check if agent admits inability
@@ -706,7 +707,7 @@ def escalate_to_human_agent(ticket_id, agent_response):
     except Exception as e:
         print(f"Failed to update ticket status: {e}")
     
-    return f"""I understand this is a bit more complex than the usual issues I handle. Let me pass this over to one of our human agents who can give you more personalized assistance.
+    return f"""I understand this is a bit more complex than the usual issues I handle. Let me pass this over to one of our Codezilla Staff who can give you more personalized assistance.
 
 Your ticket {ticket_id} has been flagged for priority human support. One of our team members will reach out to you shortly - usually within 15-30 minutes during business hours.
 
